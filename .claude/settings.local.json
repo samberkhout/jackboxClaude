@@ -11,7 +11,11 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(npm run dev:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(PORT=3001 node:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
