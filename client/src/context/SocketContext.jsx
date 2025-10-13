@@ -21,7 +21,7 @@ export const SocketProvider = ({ children }) => {
     // Automatically detect server URL based on environment
     const serverUrl = import.meta.env.VITE_WS_URL ||
       (import.meta.env.PROD
-        ? window.location.origin // Use same origin in production
+        ? window.location.origin.replace('party-game-client', 'party-game-server')
         : 'http://localhost:3001');
 
     const newSocket = io(serverUrl, {

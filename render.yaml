@@ -1,14 +1,25 @@
 services:
-  # Combined Backend + Frontend Server
+  # Backend Server
   - type: web
     name: party-game-server
     env: node
-    region: frankfurt
-    rootDir: .
-    buildCommand: npm install && npm run build && cd server && npm install
-    startCommand: cd server && node server.js
+    region: frankfurt  # Of: oregon, singapore
+    buildCommand: npm install
+    startCommand: npm run start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000
+        value: 3001
+
+  # Frontend Static Site
+  - type: web
+    name: party-game-client
+    env: static
+    region: frankfurt
+    buildCommand: npm install && npm run build
+    staticPublishPath: client/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

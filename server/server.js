@@ -4,18 +4,10 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import { nanoid } from 'nanoid';
 import { gameTypes } from './games/index.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-// Serve static files from the React app (for production)
-app.use(express.static(path.join(__dirname, '../client/dist')));
 
 const httpServer = createServer(app);
 
@@ -456,11 +448,6 @@ setInterval(() => {
     }
   });
 }, 5 * 60 * 1000);
-
-// SPA fallback - serve index.html for all other routes (must be last)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist', 'index.html'));
-});
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
