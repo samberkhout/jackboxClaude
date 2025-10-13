@@ -15,22 +15,83 @@ const PROMPTS = [
 
 export function initRound(room) {
   const playerIds = Array.from(room.players.keys());
+  const numPlayers = playerIds.length;
   const prompts = {};
+  const promptPairs = {}; // Track which players get which prompt
 
-  // Assign 2 prompts per player
-  playerIds.forEach(id => {
-    prompts[id] = [
-      PROMPTS[Math.floor(Math.random() * PROMPTS.length)],
-      PROMPTS[Math.floor(Math.random() * PROMPTS.length)]
+  // Select random prompts (need as many prompts as players)
+  const shuffledPrompts = [...PROMPTS].sort(() => Math.random() - 0.5).slice(0, numPlayers);
+
+  // Assign prompts to players in pairs
+  // Each player gets 2 different prompts, each prompt goes to exactly 2 players
+  for (let i = 0; i < numPlayers; i++) {
+    const prompt1Index = i;
+    const prompt2Index = (i + 1) % numPlayers;
+
+    prompts[playerIds[i]] = [
+      shuffledPrompts[prompt1Index],
+      shuffledPrompts[prompt2Index]
     ];
-  });
+
+    // Track prompt pairs
+    if (!promptPairs[shuffledPrompts[prompt1Index]]) {
+      promptPairs[shuffledPrompts[prompt1Index]] = [];
+    }
+    promptPairs[shuffledPrompts[prompt1Index]].push(playerIds[i]);
+
+    if (!promptPairs[shuffledPrompts[prompt2Index]]) {
+      promptPairs[shuffledPrompts[prompt2Index]] = [];
+    }
+    promptPairs[shuffledPrompts[prompt2Index]].push(playerIds[i]);
+  }
 
   return {
     prompts,
+    promptPairs,
     matchups: [],
     votes: [],
+    currentMatchupIndex: 0,
+    matchupVotes: {}, // Track votes per matchup
     results: null
   };
+}
+
+// Check if current matchup voting is complete
+export function isMatchupVotingComplete(room) {
+  const { roundData, players } = room;
+  const { matchups, currentMatchupIndex, matchupVotes } = roundData;
+
+  if (!matchups || matchups.length === 0 || currentMatchupIndex >= matchups.length) {
+    return false;
+  }
+
+  const currentMatchup = matchups[currentMatchupIndex];
+  const votesForCurrentMatchup = matchupVotes[currentMatchupIndex] || [];
+
+  // Count eligible voters (all players except the two who answered this prompt)
+  const eligibleVoters = Array.from(players.keys()).filter(
+    id => id !== currentMatchup.optionA.playerId && id !== currentMatchup.optionB.playerId
+  );
+
+  // Check if all eligible voters have voted
+  return eligibleVoters.every(voterId =>
+    votesForCurrentMatchup.some(vote => vote.voterId === voterId)
+  );
+}
+
+// Move to next matchup or complete voting phase
+export function advanceMatchup(room) {
+  const { roundData } = room;
+  const { matchups, currentMatchupIndex } = roundData;
+
+  if (currentMatchupIndex < matchups.length - 1) {
+    // Move to next matchup
+    roundData.currentMatchupIndex++;
+    return { matchupAdvanced: true, votingComplete: false };
+  } else {
+    // All matchups done
+    return { matchupAdvanced: false, votingComplete: true };
+  }
 }
 
 export function nextPhase(room) {
@@ -85,14 +146,21 @@ export function nextPhase(room) {
     }
 
     case 'VOTE': {
-      // Calculate results
-      const { matchups, votes } = roundData;
+      // Calculate results from matchup votes
+      const { matchups, matchupVotes } = roundData;
 
-      votes.forEach(vote => {
-        const matchup = matchups.find(m => m.id === vote.targetId);
-        if (matchup) {
-          matchup.votes[vote.choice]++;
-        }
+      // Aggregate votes into matchup.votes
+      matchups.forEach((matchup, idx) => {
+        const votesForThisMatchup = matchupVotes[idx] || [];
+        matchup.votes = { A: 0, B: 0 };
+
+        votesForThisMatchup.forEach(vote => {
+          if (vote.choice === 'A') {
+            matchup.votes.A++;
+          } else if (vote.choice === 'B') {
+            matchup.votes.B++;
+          }
+        });
       });
 
       // Calculate scores

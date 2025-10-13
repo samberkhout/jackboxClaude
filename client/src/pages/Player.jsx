@@ -162,6 +162,7 @@ export default function Player() {
               <QuiplashVote
                 matchups={roomState.roundData.matchups || []}
                 playerId={playerInfo.playerId}
+                currentMatchupIndex={roomState.roundData.currentMatchupIndex || 0}
               />
             )}
             {roomState.gameType === 'TEEKO' && (

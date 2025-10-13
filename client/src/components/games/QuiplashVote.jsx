@@ -1,39 +1,48 @@
 import { useState } from 'react';
 import { useSocket } from '../../context/SocketContext';
 
-export default function QuiplashVote({ matchups, playerId }) {
+export default function QuiplashVote({ matchups, playerId, currentMatchupIndex }) {
   const { submitVote } = useSocket();
-  const [currentIdx, setCurrentIdx] = useState(0);
   const [voted, setVoted] = useState(false);
   const [error, setError] = useState('');
 
-  // Filter out matchups where player is a participant
-  const votableMatchups = matchups.filter(
-    m => m.optionA.playerId !== playerId && m.optionB.playerId !== playerId
-  );
-
-  if (votableMatchups.length === 0 || voted) {
+  if (!matchups || matchups.length === 0 || currentMatchupIndex >= matchups.length) {
     return (
       <div className="card text-center py-12">
-        <div className="text-5xl mb-4">🗳️</div>
-        <h2 className="text-2xl font-bold mb-2">Vote Recorded!</h2>
-        <p className="text-gray-400">Waiting for results...</p>
+        <div className="text-5xl mb-4">⏳</div>
+        <h2 className="text-2xl font-bold mb-2">Loading...</h2>
+        <p className="text-gray-400">Waiting for voting to start...</p>
       </div>
     );
   }
 
-  const currentMatchup = votableMatchups[currentIdx];
+  const currentMatchup = matchups[currentMatchupIndex];
+
+  // Check if player is a participant in this matchup
+  const isParticipant =
+    currentMatchup.optionA.playerId === playerId ||
+    currentMatchup.optionB.playerId === playerId;
+
+  if (isParticipant || voted) {
+    return (
+      <div className="card text-center py-12">
+        <div className="text-5xl mb-4">🗳️</div>
+        <h2 className="text-2xl font-bold mb-2">
+          {isParticipant ? 'Dit is jouw vraag!' : 'Stem ingediend!'}
+        </h2>
+        <p className="text-gray-400">Wachten op anderen...</p>
+      </div>
+    );
+  }
 
   const handleVote = (choice) => {
     setError('');
 
     submitVote(currentMatchup.id, choice, (response) => {
       if (response.success) {
-        if (currentIdx < votableMatchups.length - 1) {
-          setCurrentIdx(currentIdx + 1);
-        } else {
-          setVoted(true);
-        }
+        setVoted(true);
+        // Reset voted state when moving to next matchup (will be handled by room state update)
+        setTimeout(() => setVoted(false), 100);
       } else {
         setError(response.error || 'Failed to vote');
       }
@@ -44,7 +53,7 @@ export default function QuiplashVote({ matchups, playerId }) {
     <div className="card">
       <div className="text-center mb-4">
         <div className="text-sm text-gray-400 mb-2">
-          Vote {currentIdx + 1} of {votableMatchups.length}
+          Vraag {currentMatchupIndex + 1} van {matchups.length}
         </div>
         <h2 className="text-xl font-bold">{currentMatchup.prompt}</h2>
       </div>

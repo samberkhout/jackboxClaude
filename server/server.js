@@ -287,6 +287,77 @@ io.on('connection', (socket) => {
       return callback({ success: false, error: 'Player not found' });
     }
 
+    // Quiplash-specific voting logic
+    if (room.gameType === 'quiplash') {
+      const { matchups, currentMatchupIndex, matchupVotes } = room.roundData;
+
+      if (!matchups || currentMatchupIndex >= matchups.length) {
+        return callback({ success: false, error: 'No active matchup' });
+      }
+
+      const currentMatchup = matchups[currentMatchupIndex];
+
+      // Check if player is eligible to vote (not one of the two who answered)
+      if (currentMatchup.optionA.playerId === playerId || currentMatchup.optionB.playerId === playerId) {
+        return callback({ success: false, error: 'Cannot vote on your own answer' });
+      }
+
+      // Initialize matchupVotes for this matchup if needed
+      if (!matchupVotes[currentMatchupIndex]) {
+        matchupVotes[currentMatchupIndex] = [];
+      }
+
+      // Check if already voted for this matchup
+      const alreadyVoted = matchupVotes[currentMatchupIndex].some(v => v.voterId === playerId);
+      if (alreadyVoted) {
+        return callback({ success: false, error: 'Already voted for this matchup' });
+      }
+
+      // Store vote
+      matchupVotes[currentMatchupIndex].push({
+        voterId: playerId,
+        choice,
+        timestamp: Date.now()
+      });
+
+      player.status = 'voted';
+
+      console.log(`${player.name} voted in room ${roomCode} for matchup ${currentMatchupIndex}`);
+
+      // Check if voting is complete for this matchup
+      const gameLogic = gameTypes[room.gameType];
+      if (gameLogic.isMatchupVotingComplete && gameLogic.isMatchupVotingComplete(room)) {
+        const advanceResult = gameLogic.advanceMatchup(room);
+
+        if (advanceResult.votingComplete) {
+          // All matchups done, move to next phase
+          console.log('All matchups complete, advancing to next phase');
+          const result = gameLogic.nextPhase(room);
+          room.phase = result.nextPhase;
+          if (result.roundData) {
+            room.roundData = result.roundData;
+          }
+          if (result.scores) {
+            Object.entries(result.scores).forEach(([id, points]) => {
+              room.leaderboard[id] = (room.leaderboard[id] || 0) + points;
+            });
+          }
+        } else if (advanceResult.matchupAdvanced) {
+          // Move to next matchup
+          console.log(`Advancing to matchup ${room.roundData.currentMatchupIndex}`);
+          // Reset player statuses for new matchup
+          room.players.forEach(p => {
+            p.status = 'waiting';
+          });
+        }
+      }
+
+      callback({ success: true });
+      broadcastRoomState(roomCode);
+      return;
+    }
+
+    // Original voting logic for other games
     // Check if already voted
     if (player.submissions[`VOTE_${room.currentRound}`]) {
       return callback({ success: false, error: 'Already voted' });
