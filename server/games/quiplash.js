@@ -19,30 +19,42 @@ export function initRound(room) {
   const prompts = {};
   const promptPairs = {}; // Track which players get which prompt
 
-  // Select random prompts (need as many prompts as players)
+  // Initialize empty arrays for each player
+  playerIds.forEach(id => {
+    prompts[id] = [];
+  });
+
+  // Create slots: each player needs 2 prompts
+  const slots = [];
+  playerIds.forEach(playerId => {
+    slots.push({ playerId, slotIndex: 0 });
+    slots.push({ playerId, slotIndex: 1 });
+  });
+
+  // Shuffle slots randomly
+  for (let i = slots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [slots[i], slots[j]] = [slots[j], slots[i]];
+  }
+
+  // Select random prompts (need as many prompts as players, since each prompt goes to 2 players)
   const shuffledPrompts = [...PROMPTS].sort(() => Math.random() - 0.5).slice(0, numPlayers);
 
-  // Assign prompts to players in pairs
-  // Each player gets 2 different prompts, each prompt goes to exactly 2 players
+  // Assign prompts to pairs of slots
   for (let i = 0; i < numPlayers; i++) {
-    const prompt1Index = i;
-    const prompt2Index = (i + 1) % numPlayers;
+    const prompt = shuffledPrompts[i];
+    const slot1 = slots[i * 2];
+    const slot2 = slots[i * 2 + 1];
 
-    prompts[playerIds[i]] = [
-      shuffledPrompts[prompt1Index],
-      shuffledPrompts[prompt2Index]
-    ];
+    // Assign prompt to both players
+    prompts[slot1.playerId].push(prompt);
+    prompts[slot2.playerId].push(prompt);
 
     // Track prompt pairs
-    if (!promptPairs[shuffledPrompts[prompt1Index]]) {
-      promptPairs[shuffledPrompts[prompt1Index]] = [];
+    if (!promptPairs[prompt]) {
+      promptPairs[prompt] = [];
     }
-    promptPairs[shuffledPrompts[prompt1Index]].push(playerIds[i]);
-
-    if (!promptPairs[shuffledPrompts[prompt2Index]]) {
-      promptPairs[shuffledPrompts[prompt2Index]] = [];
-    }
-    promptPairs[shuffledPrompts[prompt2Index]].push(playerIds[i]);
+    promptPairs[prompt].push(slot1.playerId, slot2.playerId);
   }
 
   return {
