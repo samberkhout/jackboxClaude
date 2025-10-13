@@ -62,7 +62,7 @@ export default function Host() {
       return;
     }
 
-    const displayUrl = `${window.location.origin}/display?roomCode=${roomCode}`;
+    const displayUrl = `${window.location.origin}/?displayRoom=${roomCode}`;
     const newWindow = window.open(displayUrl, '_blank', 'noopener,noreferrer');
 
     if (!newWindow) {
