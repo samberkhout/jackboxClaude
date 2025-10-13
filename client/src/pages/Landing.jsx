@@ -68,21 +68,6 @@ export default function Landing() {
               </p>
             </div>
           </button>
-
-          <button
-            onClick={handleDisplayGame}
-            disabled={!connected}
-            className="card hover:scale-105 transition-transform cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-br from-purple-900/50 to-pink-900/50 border-2 border-purple-500/50"
-          >
-            <div className="text-center">
-              <div className="text-5xl mb-4">📺</div>
-              <h2 className="text-2xl font-bold mb-2">Beamer Display</h2>
-              <p className="text-gray-400">
-                Full-screen presentation for TV/projector
-              </p>
-            </div>
-          </button>
-
           <button
             onClick={handleJoinGame}
             disabled={!connected}
