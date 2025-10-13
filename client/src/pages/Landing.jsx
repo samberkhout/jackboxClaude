@@ -17,6 +17,18 @@ export default function Landing() {
     });
   };
 
+  const handleDisplayGame = () => {
+    createRoom((response) => {
+      if (response.success) {
+        localStorage.setItem('gameSession', JSON.stringify({
+          roomCode: response.roomCode,
+          role: 'DISPLAY'
+        }));
+        navigate('/display');
+      }
+    });
+  };
+
   const handleJoinGame = () => {
     navigate('/join');
   };
@@ -42,7 +54,7 @@ export default function Landing() {
         )}
 
         {/* Main Actions */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12">
+        <div className="grid md:grid-cols-3 gap-6 mb-12">
           <button
             onClick={handleHostGame}
             disabled={!connected}
@@ -50,9 +62,23 @@ export default function Landing() {
           >
             <div className="text-center">
               <div className="text-5xl mb-4">🎮</div>
-              <h2 className="text-2xl font-bold mb-2">Host Game</h2>
+              <h2 className="text-2xl font-bold mb-2">Host Control</h2>
               <p className="text-gray-400">
-                Create a new room and control the game from your TV or projector
+                Control panel to manage the game
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={handleDisplayGame}
+            disabled={!connected}
+            className="card hover:scale-105 transition-transform cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-br from-purple-900/50 to-pink-900/50 border-2 border-purple-500/50"
+          >
+            <div className="text-center">
+              <div className="text-5xl mb-4">📺</div>
+              <h2 className="text-2xl font-bold mb-2">Beamer Display</h2>
+              <p className="text-gray-400">
+                Full-screen presentation for TV/projector
               </p>
             </div>
           </button>
@@ -66,7 +92,7 @@ export default function Landing() {
               <div className="text-5xl mb-4">📱</div>
               <h2 className="text-2xl font-bold mb-2">Join Game</h2>
               <p className="text-gray-400">
-                Enter a room code and play from your phone
+                Play from your phone
               </p>
             </div>
           </button>

@@ -4,6 +4,7 @@ import Landing from './pages/Landing';
 import Join from './pages/Join';
 import Host from './pages/Host';
 import Player from './pages/Player';
+import Display from './pages/Display';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <Route path="/join" element={<Join />} />
           <Route path="/host" element={<Host />} />
           <Route path="/play" element={<Player />} />
+          <Route path="/display" element={<Display />} />
         </Routes>
       </BrowserRouter>
     </SocketProvider>
