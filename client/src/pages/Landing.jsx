@@ -1,12 +1,9 @@
-import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../context/SocketContext';
 
 export default function Landing() {
   const navigate = useNavigate();
   const { createRoom, connected } = useSocket();
-  const [searchParams] = useSearchParams();
-  const displayRoomParam = searchParams.get('displayRoom');
 
   const handleHostGame = () => {
     createRoom((response) => {
@@ -35,12 +32,6 @@ export default function Landing() {
   const handleJoinGame = () => {
     navigate('/join');
   };
-
-  useEffect(() => {
-    if (displayRoomParam) {
-      navigate(`/display?roomCode=${displayRoomParam}`);
-    }
-  }, [navigate, displayRoomParam]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
