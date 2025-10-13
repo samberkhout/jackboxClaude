@@ -29,17 +29,6 @@ export default function Landing() {
   useEffect(() => {
     if (displayRoomParam) {
       navigate(`/display?roomCode=${displayRoomParam}`);
-      return;
-    }
-
-    try {
-      const pendingRoom = localStorage.getItem('pendingDisplayRoom');
-      if (pendingRoom) {
-        localStorage.removeItem('pendingDisplayRoom');
-        navigate(`/display?roomCode=${pendingRoom}`);
-      }
-    } catch (err) {
-      console.error('Kon pending display room niet laden', err);
     }
   }, [navigate, displayRoomParam]);
 

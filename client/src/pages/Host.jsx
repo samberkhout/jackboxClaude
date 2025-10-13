@@ -62,14 +62,8 @@ export default function Host() {
       return;
     }
 
-    try {
-      localStorage.setItem('pendingDisplayRoom', roomCode);
-    } catch (err) {
-      console.error('Kon pending display room niet opslaan', err);
-    }
-
-    const displayUrl = `${window.location.origin}/`;
-    const newWindow = window.open(displayUrl, '_blank', 'noopener');
+    const displayUrl = `${window.location.origin}/?displayRoom=${roomCode}`;
+    const newWindow = window.open(displayUrl, '_blank', 'noopener,noreferrer');
 
     if (!newWindow) {
       alert('Kan het presentatie scherm niet openen. Controleer of pop-ups zijn toegestaan.');
