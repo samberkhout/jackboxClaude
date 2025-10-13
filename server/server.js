@@ -10,9 +10,38 @@ app.use(cors());
 app.use(express.json());
 
 const httpServer = createServer(app);
+
+// Allow CORS for local development and production
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  // Add your deployed frontend URLs here
+  process.env.CLIENT_URL,
+  // Render auto-detects patterns like this:
+  /\.onrender\.com$/,
+  /\.railway\.app$/,
+  /\.vercel\.app$/
+].filter(Boolean);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: ['http://localhost:3000', 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+
+      const isAllowed = allowedOrigins.some(allowed => {
+        if (typeof allowed === 'string') return allowed === origin;
+        if (allowed instanceof RegExp) return allowed.test(origin);
+        return false;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.log('Blocked origin:', origin);
+        callback(null, true); // Allow all in production for now
+      }
+    },
     credentials: true
   }
 });

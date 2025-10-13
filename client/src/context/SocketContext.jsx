@@ -18,7 +18,13 @@ export const SocketProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const newSocket = io('http://localhost:3001', {
+    // Automatically detect server URL based on environment
+    const serverUrl = import.meta.env.VITE_WS_URL ||
+      (import.meta.env.PROD
+        ? window.location.origin.replace('party-game-client', 'party-game-server')
+        : 'http://localhost:3001');
+
+    const newSocket = io(serverUrl, {
       transports: ['websocket', 'polling']
     });
 

@@ -25,7 +25,15 @@ One web app to run your entire party game night with multiple rounds and games!
 npm install
 ```
 
-## Running the Application
+## 🚀 Deployment (Gratis Hosten)
+
+**Wil je de app online zetten?** Zie **[DEPLOYMENT.md](DEPLOYMENT.md)** voor:
+- Stap-voor-stap guides voor Render.com, Railway.app, Vercel, Fly.io
+- Volledig gratis opties
+- 5-minuten quick start
+- Troubleshooting tips
+
+## Running the Application (Lokaal)
 
 ### Development Mode (Both server and client)
 
