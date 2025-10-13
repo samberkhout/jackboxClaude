@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../context/SocketContext';
 import QuiplashInput from '../components/games/QuiplashInput';
 import QuiplashVote from '../components/games/QuiplashVote';
+import QuiplashInput3D from '../components/games/QuiplashInput3D';
+import QuiplashVote3D from '../components/games/QuiplashVote3D';
 import TeekoInput from '../components/games/TeekoInput';
 import TeekoMatchup from '../components/games/TeekoMatchup';
 import TeekoVote from '../components/games/TeekoVote';
@@ -43,6 +45,31 @@ export default function Player() {
   }
 
   const currentPlayer = roomState.players.find(p => p.id === playerInfo.playerId);
+
+  // Check if we're in 3D mode for Quiplash
+  const isQuiplash3DPhase = roomState.gameType === 'QUIPLASH' &&
+    (roomState.phase === 'INPUT' || roomState.phase === 'VOTE');
+
+  if (isQuiplash3DPhase) {
+    // Full-screen 3D experience
+    return (
+      <div className="fixed inset-0 w-full h-full overflow-hidden">
+        {roomState.phase === 'INPUT' && (
+          <QuiplashInput3D
+            prompts={roomState.roundData.prompts?.[playerInfo.playerId] || []}
+            playerId={playerInfo.playerId}
+          />
+        )}
+        {roomState.phase === 'VOTE' && (
+          <QuiplashVote3D
+            matchups={roomState.roundData.matchups || []}
+            playerId={playerInfo.playerId}
+            currentMatchupIndex={roomState.roundData.currentMatchupIndex || 0}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4" style={{
@@ -156,12 +183,6 @@ export default function Player() {
         {/* INPUT PHASE */}
         {roomState.phase === 'INPUT' && (
           <>
-            {roomState.gameType === 'QUIPLASH' && (
-              <QuiplashInput
-                prompts={roomState.roundData.prompts?.[playerInfo.playerId] || []}
-                playerId={playerInfo.playerId}
-              />
-            )}
             {roomState.gameType === 'TEEKO' && <TeekoInput playerId={playerInfo.playerId} />}
             {roomState.gameType === 'JOBJOB' && (
               <JobJobInput
@@ -220,13 +241,6 @@ export default function Player() {
         {/* VOTE PHASE */}
         {roomState.phase === 'VOTE' && (
           <>
-            {roomState.gameType === 'QUIPLASH' && (
-              <QuiplashVote
-                matchups={roomState.roundData.matchups || []}
-                playerId={playerInfo.playerId}
-                currentMatchupIndex={roomState.roundData.currentMatchupIndex || 0}
-              />
-            )}
             {roomState.gameType === 'TEEKO' && (
               <TeekoVote
                 duels={roomState.roundData.duels || []}
