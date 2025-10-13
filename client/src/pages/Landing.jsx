@@ -20,7 +20,17 @@ export default function Landing() {
     });
   };
 
-
+  const handleDisplayGame = () => {
+    createRoom((response) => {
+      if (response.success) {
+        localStorage.setItem('gameSession', JSON.stringify({
+          roomCode: response.roomCode,
+          role: 'DISPLAY'
+        }));
+        navigate('/display');
+      }
+    });
+  };
 
   const handleJoinGame = () => {
     navigate('/join');
