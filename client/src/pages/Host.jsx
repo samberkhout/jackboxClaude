@@ -4,6 +4,7 @@ import { useSocket } from '../context/SocketContext';
 import { QRCodeSVG } from 'qrcode.react';
 import Leaderboard from '../components/Leaderboard';
 import RevealPhase from '../components/RevealPhase';
+import QuiplashDisplay from '../components/games/QuiplashDisplay';
 
 export default function Host() {
   const navigate = useNavigate();
@@ -174,23 +175,49 @@ export default function Host() {
           )}
 
           {(roomState.phase === 'INPUT' || roomState.phase === 'MATCHUP') && (
-            <div className="text-center py-8">
-              <p className="text-xl mb-4">Waiting for players to submit...</p>
-              <div className="text-3xl mb-4">⏳</div>
-              <button onClick={handleNextPhase} className="btn btn-primary">
-                Force Next Phase
-              </button>
-            </div>
+            <>
+              {roomState.gameType === 'QUIPLASH' ? (
+                <div>
+                  <QuiplashDisplay roundData={roomState.roundData} phase={roomState.phase} />
+                  <div className="text-center mt-6">
+                    <button onClick={handleNextPhase} className="btn btn-primary px-8 py-3 text-lg">
+                      ⏭️ Volgende Fase
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-xl mb-4">Waiting for players to submit...</p>
+                  <div className="text-3xl mb-4">⏳</div>
+                  <button onClick={handleNextPhase} className="btn btn-primary">
+                    Force Next Phase
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {roomState.phase === 'VOTE' && (
-            <div className="text-center py-8">
-              <p className="text-xl mb-4">Players are voting...</p>
-              <div className="text-3xl mb-4">🗳️</div>
-              <button onClick={handleNextPhase} className="btn btn-primary">
-                Show Results
-              </button>
-            </div>
+            <>
+              {roomState.gameType === 'QUIPLASH' ? (
+                <div>
+                  <QuiplashDisplay roundData={roomState.roundData} phase={roomState.phase} />
+                  <div className="text-center mt-6">
+                    <button onClick={handleNextPhase} className="btn btn-primary px-8 py-3 text-lg">
+                      🎉 Toon Resultaten
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-xl mb-4">Players are voting...</p>
+                  <div className="text-3xl mb-4">🗳️</div>
+                  <button onClick={handleNextPhase} className="btn btn-primary">
+                    Show Results
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {roomState.phase === 'REVEAL' && (
