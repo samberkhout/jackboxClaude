@@ -13,8 +13,7 @@ export default function Display() {
 
   useEffect(() => {
     const session = JSON.parse(localStorage.getItem('gameSession') || '{}');
-    // Only allow host to access display view
-    if (!session.roomCode || session.role !== 'HOST') {
+    if (!session.roomCode) {
       navigate('/');
       return;
     }
