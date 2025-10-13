@@ -56,20 +56,6 @@ export default function Host() {
     }
   };
 
-  const handleOpenDisplay = () => {
-    if (!roomCode) {
-      alert('Room code nog niet beschikbaar.');
-      return;
-    }
-
-    const displayUrl = `${window.location.origin}/display?roomCode=${roomCode}`;
-    const newWindow = window.open(displayUrl, '_blank', 'noopener,noreferrer');
-
-    if (!newWindow) {
-      alert('Kan het presentatie scherm niet openen. Controleer of pop-ups zijn toegestaan.');
-    }
-  };
-
   const joinUrl = `${window.location.origin}/join`;
 
   if (!roomState) {
@@ -89,14 +75,9 @@ export default function Host() {
       <div className="max-w-7xl mx-auto mb-6">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-3xl font-bold">Host Control Panel</h1>
-          <div className="flex items-center gap-3">
-            <button onClick={handleOpenDisplay} className="btn btn-outline text-sm">
-              📺 Open Presentatiescherm
-            </button>
-            <button onClick={handleReset} className="btn btn-danger text-sm">
-              Reset Room
-            </button>
-          </div>
+          <button onClick={handleReset} className="btn btn-danger text-sm">
+            Reset Room
+          </button>
         </div>
 
         {/* Room Code & Players */}
