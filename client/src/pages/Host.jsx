@@ -75,19 +75,9 @@ export default function Host() {
       <div className="max-w-7xl mx-auto mb-6">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-3xl font-bold">Host Control Panel</h1>
-          <div className="flex gap-3">
-            <a
-              href="/display"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-primary text-sm"
-            >
-              📺 Open Display
-            </a>
-            <button onClick={handleReset} className="btn btn-danger text-sm">
-              Reset Room
-            </button>
-          </div>
+          <button onClick={handleReset} className="btn btn-danger text-sm">
+            Reset Room
+          </button>
         </div>
 
         {/* Room Code & Players */}
