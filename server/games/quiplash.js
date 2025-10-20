@@ -1,4 +1,5 @@
 // Quiplash Game Logic
+// Phase flow: INPUT -> VOTE -> LAST_LASH -> REVEAL -> LEADERBOARD
 
 const PROMPTS = [
   "The worst thing to say at a wedding",
@@ -11,6 +12,14 @@ const PROMPTS = [
   "Something you shouldn't say to a police officer",
   "A bad fortune cookie message",
   "The worst pet name"
+];
+
+const FINAL_PROMPTS = [
+  "The most awkward thing to happen during a first date",
+  "A terrible last words before a dramatic moment",
+  "The worst way to start a speech at the United Nations",
+  "Something you definitely shouldn't bring to a job interview",
+  "The most embarrassing ringtone to go off during a funeral"
 ];
 
 export function initRound(room) {
@@ -175,27 +184,76 @@ export function nextPhase(room) {
         });
       });
 
-      // Calculate scores
+      // Calculate scores - check for "Quiplash!" (100% unanimous)
       const scores = {};
       matchups.forEach(matchup => {
         const totalVotes = matchup.votes.A + matchup.votes.B;
         const winnerA = matchup.votes.A > matchup.votes.B;
         const winnerB = matchup.votes.B > matchup.votes.A;
-        const unanimous = (matchup.votes.A === totalVotes) || (matchup.votes.B === totalVotes);
+        const quiplashA = matchup.votes.A === totalVotes && totalVotes > 0;
+        const quiplashB = matchup.votes.B === totalVotes && totalVotes > 0;
 
         if (winnerA) {
-          scores[matchup.optionA.playerId] = (scores[matchup.optionA.playerId] || 0) +
-            (unanimous ? 500 : matchup.votes.A * 100);
+          // Quiplash bonus for 100% votes
+          const points = quiplashA ? 1000 : matchup.votes.A * 100;
+          scores[matchup.optionA.playerId] = (scores[matchup.optionA.playerId] || 0) + points;
+          matchup.quiplash = quiplashA ? 'A' : null;
         }
         if (winnerB) {
-          scores[matchup.optionB.playerId] = (scores[matchup.optionB.playerId] || 0) +
-            (unanimous ? 500 : matchup.votes.B * 100);
+          const points = quiplashB ? 1000 : matchup.votes.B * 100;
+          scores[matchup.optionB.playerId] = (scores[matchup.optionB.playerId] || 0) + points;
+          matchup.quiplash = quiplashB ? 'B' : null;
         }
+      });
+
+      // Select a final prompt for Last Lash
+      const finalPrompt = FINAL_PROMPTS[Math.floor(Math.random() * FINAL_PROMPTS.length)];
+
+      return {
+        nextPhase: 'LAST_LASH',
+        roundData: { ...roundData, results: matchups, finalPrompt },
+        scores
+      };
+    }
+
+    case 'LAST_LASH': {
+      // Fase 3: The finale - everyone answers the same question
+      const { finalPrompt, votes } = roundData;
+      const finalAnswers = [];
+
+      // Collect all answers to the final prompt
+      players.forEach((player, id) => {
+        const input = player.submissions.LAST_LASH;
+        if (input && input.answer) {
+          finalAnswers.push({
+            playerId: id,
+            answer: input.answer,
+            votes: 0
+          });
+        }
+      });
+
+      // Aggregate votes (players can vote for top 3)
+      const voteCount = {};
+      (roundData.lastLashVotes || []).forEach(vote => {
+        vote.choices.forEach((answerId, rank) => {
+          if (!voteCount[answerId]) voteCount[answerId] = 0;
+          // Weight: 1st choice = 3 points, 2nd = 2 points, 3rd = 1 point
+          voteCount[answerId] += (3 - rank);
+        });
+      });
+
+      // Calculate scores (triple points!)
+      const scores = {};
+      finalAnswers.forEach((answer, idx) => {
+        const votes = voteCount[idx] || 0;
+        answer.votes = votes;
+        scores[answer.playerId] = votes * 100 * 3; // Triple points!
       });
 
       return {
         nextPhase: 'REVEAL',
-        roundData: { ...roundData, results: matchups },
+        roundData: { ...roundData, finalAnswers },
         scores
       };
     }

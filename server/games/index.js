@@ -4,6 +4,8 @@ import * as jobjob from './jobjob.js';
 import * as champdup from './champdup.js';
 import * as trivia from './trivia.js';
 import * as fibbage from './fibbage.js';
+import * as drawful from './drawful.js';
+import * as survive from './survive.js';
 
 export const gameTypes = {
   QUIPLASH: quiplash,
@@ -11,5 +13,7 @@ export const gameTypes = {
   JOBJOB: jobjob,
   CHAMPDUP: champdup,
   TRIVIA: trivia,
-  FIBBAGE: fibbage
+  FIBBAGE: fibbage,
+  DRAWFUL: drawful,
+  SURVIVE: survive
 };
