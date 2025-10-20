@@ -288,7 +288,7 @@ io.on('connection', (socket) => {
     }
 
     // Quiplash-specific voting logic
-    if (room.gameType === 'quiplash') {
+    if (room.gameType === 'QUIPLASH') {
       const { matchups, currentMatchupIndex, matchupVotes } = room.roundData;
 
       if (!matchups || currentMatchupIndex >= matchups.length) {
@@ -384,6 +384,66 @@ io.on('connection', (socket) => {
     player.status = 'voted';
 
     console.log(`${player.name} voted in room ${roomCode}`);
+    callback({ success: true });
+    broadcastRoomState(roomCode);
+  });
+
+  // Submit finale vote (Quiplash finale - vote for top 3)
+  socket.on('submitFinaleVote', ({ votes }, callback) => {
+    const roomCode = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    const room = rooms.get(roomCode);
+
+    if (!room || !playerId) {
+      return callback({ success: false, error: 'Invalid session' });
+    }
+
+    if (room.gameType !== 'QUIPLASH' || !room.roundData.isFinale) {
+      return callback({ success: false, error: 'Not in finale mode' });
+    }
+
+    const player = room.players.get(playerId);
+    if (!player) {
+      return callback({ success: false, error: 'Player not found' });
+    }
+
+    // Validate votes array (should be max 3 player IDs)
+    if (!Array.isArray(votes) || votes.length === 0 || votes.length > 3) {
+      return callback({ success: false, error: 'Invalid vote count (max 3)' });
+    }
+
+    // Check if player is voting for themselves
+    if (votes.includes(playerId)) {
+      return callback({ success: false, error: 'Cannot vote for yourself' });
+    }
+
+    // Check if already voted
+    if (room.roundData.finaleVotes[playerId]) {
+      return callback({ success: false, error: 'Already voted' });
+    }
+
+    // Store votes
+    room.roundData.finaleVotes[playerId] = votes;
+    player.status = 'voted';
+
+    console.log(`${player.name} voted in finale for ${votes.length} answers`);
+
+    // Check if all players have voted
+    const gameLogic = gameTypes[room.gameType];
+    if (gameLogic.isFinaleVotingComplete && gameLogic.isFinaleVotingComplete(room)) {
+      console.log('Finale voting complete, advancing to reveal');
+      const result = gameLogic.nextPhase(room);
+      room.phase = result.nextPhase;
+      if (result.roundData) {
+        room.roundData = result.roundData;
+      }
+      if (result.scores) {
+        Object.entries(result.scores).forEach(([id, points]) => {
+          room.leaderboard[id] = (room.leaderboard[id] || 0) + points;
+        });
+      }
+    }
+
     callback({ success: true });
     broadcastRoomState(roomCode);
   });

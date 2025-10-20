@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../context/SocketContext';
 import QuiplashInput from '../components/games/QuiplashInput';
 import QuiplashVote from '../components/games/QuiplashVote';
+import QuiplashFinaleVote from '../components/games/QuiplashFinaleVote';
 // import QuiplashInput3D from '../components/games/QuiplashInput3D';
 // import QuiplashVote3D from '../components/games/QuiplashVote3D';
 import TeekoInput from '../components/games/TeekoInput';
@@ -187,6 +188,7 @@ export default function Player() {
               <QuiplashInput
                 prompts={roomState.roundData.prompts?.[playerInfo.playerId] || []}
                 playerId={playerInfo.playerId}
+                players={roomState.players}
               />
             )}
             {roomState.gameType === 'TEEKO' && <TeekoInput playerId={playerInfo.playerId} />}
@@ -248,11 +250,22 @@ export default function Player() {
         {roomState.phase === 'VOTE' && (
           <>
             {roomState.gameType === 'QUIPLASH' && (
-              <QuiplashVote
-                matchups={roomState.roundData.matchups || []}
-                playerId={playerInfo.playerId}
-                currentMatchupIndex={roomState.roundData.currentMatchupIndex || 0}
-              />
+              roomState.roundData.isFinale ? (
+                <QuiplashFinaleVote
+                  finaleAnswers={roomState.roundData.finaleAnswers || []}
+                  playerId={playerInfo.playerId}
+                  finaleVotes={roomState.roundData.finaleVotes || {}}
+                  totalPlayers={roomState.players.length}
+                />
+              ) : (
+                <QuiplashVote
+                  matchups={roomState.roundData.matchups || []}
+                  playerId={playerInfo.playerId}
+                  currentMatchupIndex={roomState.roundData.currentMatchupIndex || 0}
+                  matchupVotes={roomState.roundData.matchupVotes || {}}
+                  totalPlayers={roomState.players.length}
+                />
+              )
             )}
             {roomState.gameType === 'TEEKO' && (
               <TeekoVote

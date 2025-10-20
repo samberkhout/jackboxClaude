@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSocket } from '../../context/SocketContext';
 
-export default function QuiplashVote({ matchups, playerId, currentMatchupIndex }) {
+export default function QuiplashVote({ matchups, playerId, currentMatchupIndex, matchupVotes = {}, totalPlayers = 0 }) {
   const { submitVote } = useSocket();
   const [voted, setVoted] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +29,12 @@ export default function QuiplashVote({ matchups, playerId, currentMatchupIndex }
     currentMatchup.optionA.playerId === playerId ||
     currentMatchup.optionB.playerId === playerId;
 
+  // Calculate voting progress
+  const currentMatchupVotes = matchupVotes[currentMatchupIndex] || [];
+  const voteCount = currentMatchupVotes.length;
+  const eligibleVoters = totalPlayers - 2; // Total players minus the 2 participants
+  const voteProgress = eligibleVoters > 0 ? `${voteCount}/${eligibleVoters}` : '';
+
   if (isParticipant || voted) {
     return (
       <div className="relative overflow-hidden">
@@ -39,6 +45,22 @@ export default function QuiplashVote({ matchups, playerId, currentMatchupIndex }
             {isParticipant ? 'DIT IS JOUW VRAAG!' : 'GESTEMD!'}
           </h2>
           <p className="text-2xl text-gray-300 font-semibold">Wachten op anderen...</p>
+          {voteProgress && (
+            <div className="mt-6">
+              <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-full border-2 border-cyan-500/50">
+                <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
+                  {voteProgress}
+                </span>
+                <span className="text-lg text-gray-300 font-semibold">spelers gestemd</span>
+              </div>
+              <div className="mt-4 max-w-md mx-auto bg-gray-700/50 rounded-full h-3 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 ease-out"
+                  style={{ width: `${eligibleVoters > 0 ? (voteCount / eligibleVoters) * 100 : 0}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
           <div className="mt-8 flex justify-center gap-2">
             <div className="w-3 h-3 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-3 h-3 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>

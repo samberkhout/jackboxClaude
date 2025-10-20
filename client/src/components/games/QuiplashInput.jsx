@@ -1,19 +1,29 @@
 import { useState } from 'react';
 import { useSocket } from '../../context/SocketContext';
 
-export default function QuiplashInput({ prompts, playerId }) {
+export default function QuiplashInput({ prompts, playerId, players = [] }) {
   const { submitInput } = useSocket();
   const [answers, setAnswers] = useState(['', '']);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
+  const isFinale = prompts.length === 1;
+
   const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
 
-    if (!answers[0].trim() || !answers[1].trim()) {
-      setError('Vul beide vragen in!');
-      return;
+    // Validate based on number of prompts
+    if (isFinale) {
+      if (!answers[0].trim()) {
+        setError('Vul je antwoord in!');
+        return;
+      }
+    } else {
+      if (!answers[0].trim() || !answers[1].trim()) {
+        setError('Vul beide vragen in!');
+        return;
+      }
     }
 
     submitInput({ answers }, (response) => {
@@ -25,6 +35,11 @@ export default function QuiplashInput({ prompts, playerId }) {
     });
   };
 
+  // Calculate submission progress
+  const submittedCount = players.filter(p => p.status === 'submitted').length;
+  const totalPlayers = players.length;
+  const submissionProgress = `${submittedCount}/${totalPlayers}`;
+
   if (submitted) {
     return (
       <div className="relative overflow-hidden">
@@ -35,6 +50,22 @@ export default function QuiplashInput({ prompts, playerId }) {
             VERSTUURD!
           </h2>
           <p className="text-2xl text-gray-300 font-semibold">Wachten op andere spelers...</p>
+          {totalPlayers > 0 && (
+            <div className="mt-6">
+              <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-full border-2 border-cyan-500/50">
+                <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
+                  {submissionProgress}
+                </span>
+                <span className="text-lg text-gray-300 font-semibold">spelers klaar</span>
+              </div>
+              <div className="mt-4 max-w-md mx-auto bg-gray-700/50 rounded-full h-3 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-500 ease-out"
+                  style={{ width: `${totalPlayers > 0 ? (submittedCount / totalPlayers) * 100 : 0}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
           <div className="mt-8 flex justify-center gap-2">
             <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
@@ -51,12 +82,16 @@ export default function QuiplashInput({ prompts, playerId }) {
       <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-8 shadow-2xl border-4 border-orange-500/50">
         <div className="text-center mb-8">
           <div className="inline-block px-6 py-2 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full mb-4">
-            <span className="text-white font-black text-sm tracking-widest">QUIPLASH</span>
+            <span className="text-white font-black text-sm tracking-widest">
+              {isFinale ? '🏆 THE LAST LASH 🏆' : 'QUIPLASH'}
+            </span>
           </div>
           <h2 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-400 to-pink-400 mb-2">
-            BEANTWOORD DE VRAGEN!
+            {isFinale ? 'DE FINALE VRAAG!' : 'BEANTWOORD DE VRAGEN!'}
           </h2>
-          <p className="text-gray-400 text-lg">Wees grappig. Wees creatief. Wees jezelf.</p>
+          <p className="text-gray-400 text-lg">
+            {isFinale ? 'Dit is je moment! Geef je allerbeste antwoord!' : 'Wees grappig. Wees creatief. Wees jezelf.'}
+          </p>
         </div>
 
         {error && (

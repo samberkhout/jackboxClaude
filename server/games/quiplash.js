@@ -13,7 +13,18 @@ const PROMPTS = [
   "The worst pet name"
 ];
 
-export function initRound(room) {
+const FINALE_PROMPTS = [
+  "The most awkward thing to happen during a job interview",
+  "A product that should never be advertised on TV",
+  "The worst possible last words",
+  "Something you should never Google at work",
+  "A terrible idea for a theme park",
+  "The worst possible wedding gift",
+  "Something aliens would be confused about if they visited Earth",
+  "A bad slogan for a political campaign"
+];
+
+export function initRound(room, isFinale = false) {
   const playerIds = Array.from(room.players.keys());
   const numPlayers = playerIds.length;
   const prompts = {};
@@ -24,6 +35,30 @@ export function initRound(room) {
     prompts[id] = [];
   });
 
+  if (isFinale) {
+    // FINALE MODE: All players get the same single prompt
+    const finalePrompt = FINALE_PROMPTS[Math.floor(Math.random() * FINALE_PROMPTS.length)];
+
+    playerIds.forEach(playerId => {
+      prompts[playerId] = [finalePrompt]; // Single prompt for finale
+    });
+
+    promptPairs[finalePrompt] = playerIds; // All players answer this prompt
+
+    return {
+      prompts,
+      promptPairs,
+      matchups: [],
+      votes: [],
+      currentMatchupIndex: 0,
+      matchupVotes: {},
+      finaleVotes: {}, // Track finale votes: { voterId: [playerId1, playerId2, playerId3] }
+      results: null,
+      isFinale: true
+    };
+  }
+
+  // NORMAL MODE: Paired prompts
   // Create slots: each player needs 2 prompts
   const slots = [];
   playerIds.forEach(playerId => {
@@ -64,7 +99,8 @@ export function initRound(room) {
     votes: [],
     currentMatchupIndex: 0,
     matchupVotes: {}, // Track votes per matchup
-    results: null
+    results: null,
+    isFinale: false
   };
 }
 
@@ -106,12 +142,79 @@ export function advanceMatchup(room) {
   }
 }
 
+// Check if finale voting is complete
+export function isFinaleVotingComplete(room) {
+  const { roundData, players } = room;
+  const { finaleVotes } = roundData;
+
+  if (!finaleVotes) return false;
+
+  // All players should have voted (voted means they submitted their top 3)
+  const allVoted = Array.from(players.keys()).every(playerId => {
+    return finaleVotes[playerId] && finaleVotes[playerId].length > 0;
+  });
+
+  return allVoted;
+}
+
+// Calculate finale scores
+export function calculateFinaleScores(room) {
+  const { roundData, players } = room;
+  const { finaleVotes } = roundData;
+  const scores = {};
+
+  // Initialize scores for all players
+  Array.from(players.keys()).forEach(playerId => {
+    scores[playerId] = 0;
+  });
+
+  // Count votes for each player
+  const voteCounts = {};
+  Object.values(finaleVotes).forEach(votes => {
+    votes.forEach(votedPlayerId => {
+      voteCounts[votedPlayerId] = (voteCounts[votedPlayerId] || 0) + 1;
+    });
+  });
+
+  // Calculate total votes
+  const totalVotes = Object.values(voteCounts).reduce((sum, count) => sum + count, 0);
+
+  // Award points based on percentage of votes (triple points)
+  Object.entries(voteCounts).forEach(([playerId, voteCount]) => {
+    const percentage = totalVotes > 0 ? voteCount / totalVotes : 0;
+    scores[playerId] = Math.round(percentage * 1000 * 3); // Triple points for finale
+  });
+
+  return scores;
+}
+
 export function nextPhase(room) {
   const { phase, roundData, players } = room;
 
   switch (phase) {
     case 'INPUT': {
-      // Collect all submissions and create matchups
+      if (roundData.isFinale) {
+        // FINALE MODE: Collect all answers for finale voting
+        const finaleAnswers = [];
+        players.forEach((player, id) => {
+          const input = player.submissions.INPUT;
+          if (input && input.answers && input.answers[0]) {
+            finaleAnswers.push({
+              playerId: id,
+              playerName: player.name,
+              answer: input.answers[0],
+              votes: 0
+            });
+          }
+        });
+
+        return {
+          nextPhase: 'VOTE',
+          roundData: { ...roundData, finaleAnswers }
+        };
+      }
+
+      // NORMAL MODE: Collect all submissions and create matchups
       const submissions = [];
       players.forEach((player, id) => {
         const input = player.submissions.INPUT;
@@ -158,7 +261,18 @@ export function nextPhase(room) {
     }
 
     case 'VOTE': {
-      // Calculate results from matchup votes
+      if (roundData.isFinale) {
+        // FINALE MODE: Calculate scores from finale votes
+        const scores = calculateFinaleScores(room);
+
+        return {
+          nextPhase: 'REVEAL',
+          roundData: { ...roundData, results: roundData.finaleAnswers },
+          scores
+        };
+      }
+
+      // NORMAL MODE: Calculate results from matchup votes
       const { matchups, matchupVotes } = roundData;
 
       // Aggregate votes into matchup.votes
