@@ -1,0 +1,192 @@
+================================================================================
+QUIPLASH IMPLEMENTATION - QUICK REFERENCE
+================================================================================
+
+PROJECT STRUCTURE:
+================================================================================
+Server:
+  - /server/games/quiplash.js        ← Game logic & state
+  - /server/server.js                 ← Socket handlers (line 291 has BUG!)
+
+Client:
+  - /client/src/pages/Host.jsx        ← Host display & control
+  - /client/src/pages/Player.jsx      ← Player main router
+  - /client/src/components/games/
+    - QuiplashInput.jsx               ← Phase 1: Writing answers
+    - QuiplashVote.jsx                ← Phase 2: Voting
+    - QuiplashDisplay.jsx             ← Host matchup display
+  - /client/src/components/
+    - RevealPhase.jsx                 ← Phase 3: Results
+    - Leaderboard.jsx                 ← Phase 4: Scores
+
+GAME FLOW:
+================================================================================
+Phase 1: LOBBY
+  └─ Host selects game & clicks Start
+
+Phase 2: INPUT (Writing)
+  └─ Each player gets 2 prompts
+  └─ Prompts paired (same prompt → 2 different players)
+  └─ Players write answers
+  └─ Host advances manually
+
+Phase 3: VOTE (Battle)
+  ├─ Matchups created from answers
+  ├─ Players vote on matchups (can't vote own answers)
+  ├─ Auto-advances when all eligible voters vote
+  └─ Auto-advances to REVEAL when all matchups done
+
+Phase 4: REVEAL (Results)
+  └─ Shows vote counts & percentages
+  └─ Calculates scores (unanimous=500pts, regular=votes×100)
+
+Phase 5: LEADERBOARD
+  └─ Cumulative scores displayed
+  └─ Host can start new round or reset
+
+CRITICAL BUG (⚠️ BREAKS VOTING):
+================================================================================
+File:     /server/server.js
+Line:     291
+Problem:  if (room.gameType === 'quiplash')  ← LOWERCASE!
+Fix:      if (room.gameType === 'QUIPLASH')  ← UPPERCASE!
+
+Why it breaks:
+  - gameType is set as 'QUIPLASH' (uppercase) at line 195
+  - The check at line 291 always fails
+  - Falls back to generic voting logic
+  - Quiplash matchup voting doesn't work
+  - Score calculation broken
+  - Players might vote on own answers
+
+Impact:  CRITICAL - VOTING COMPLETELY BROKEN
+
+MAJOR MISSING FEATURES:
+================================================================================
+1. Last Lash (Finale)      ← No finale phase with top 2-3 players
+2. Vote Progress           ← Players don't see voting progress
+3. Input Status            ← Can't see who submitted
+4. Disconnect Timeout      ← Voting deadlocks if player disconnects
+5. 3D Rendering            ← Commented out, high-quality UI disabled
+
+KEY FILES TO MODIFY:
+================================================================================
+IMMEDIATE (fix bug):
+  - /server/server.js (line 291)
+
+HIGH PRIORITY:
+  - /server/games/quiplash.js (add Last Lash phase)
+  - /client/src/components/games/QuiplashVote.jsx (add progress)
+  - /client/src/pages/Player.jsx (show input status)
+
+KEY FUNCTIONS:
+================================================================================
+quiplash.js:
+  - initRound()                 ← Prompt distribution
+  - nextPhase()                 ← Phase transitions & matchup creation
+  - isMatchupVotingComplete()   ← Check if matchup voting done
+  - advanceMatchup()            ← Move to next matchup
+
+server.js:
+  - submitInput handler         ← Store player answers
+  - submitVote handler          ← Process votes (HAS BUG HERE)
+  - nextPhase handler           ← Trigger game phase change
+  
+SCORING LOGIC:
+================================================================================
+Per matchup:
+  - If option A has more votes than B: option_A.player gets points
+  - If all votes are unanimous (all A or all B): 500 points
+  - Otherwise: vote_count × 100 points
+
+Example:
+  - 4 players vote, 3 vote A, 1 vote B
+  - Option A winner gets: 3 × 100 = 300 points
+  - If all 4 voted A: 500 points (unanimous)
+
+DATA FLOW:
+================================================================================
+INPUT PHASE:
+  Player → submitInput → Server stores in submissions.INPUT
+           ↓
+           broadcast roomState
+           ↓
+           Host clicks "Next Phase"
+
+VOTE PHASE:
+  Player → submitVote({targetId: matchup.id, choice: 'A'|'B'})
+           ↓
+           Server stores in matchupVotes[matchupIndex]
+           ↓
+           Server checks: isMatchupVotingComplete()
+           ├─ If YES: advanceMatchup() (auto-continue or REVEAL)
+           └─ If NO: wait for more votes
+           ↓
+           broadcast roomState
+
+REVEAL PHASE:
+  Server → calculate scores → broadcast roomState with results
+           ↓
+           RevealPhase component displays results
+           ↓
+           Host clicks "Continue"
+
+KNOWN ISSUES:
+================================================================================
+CRITICAL:
+  ✗ Voting broken (case mismatch line 291)
+  ✗ No finale/Last Lash phase
+
+HIGH:
+  ✗ 3D components disabled/commented out
+  ✗ No voting progress visibility
+  ✗ No input status tracking
+
+MEDIUM:
+  ✗ No disconnect timeout (deadlocks voting)
+  ✗ No phase validation (can advance mid-round)
+  
+LOW:
+  ✗ Manual phase advancement required
+  ✗ Can start infinite rounds with no winner
+
+FIX PRIORITY & TIME ESTIMATE:
+================================================================================
+1. Fix case bug              ← 10 min   (CRITICAL)
+2. Implement Last Lash       ← 1.5 hrs  (HIGH)
+3. Add vote progress         ← 30 min   (HIGH)
+4. Add input status          ← 20 min   (HIGH)
+5. Disconnect timeout        ← 45 min   (MEDIUM)
+6. Phase validation          ← 30 min   (MEDIUM)
+7. Re-enable 3D rendering    ← 1 hr     (LOW)
+8. Auto-advance on input     ← 20 min   (LOW)
+
+Total: ~4-5 hours to production-ready
+
+TESTING CHECKLIST:
+================================================================================
+After bug fix:
+  [ ] Voting works end-to-end
+  [ ] Players can't vote on own answers
+  [ ] Auto-advance on matchup completion
+  [ ] Scores calculated correctly
+  [ ] Results display accurate
+  [ ] Leaderboard persists
+  [ ] Multiple rounds work
+  [ ] Disconnect handled
+  [ ] UI stays in sync
+
+SOCKET EVENTS:
+================================================================================
+CLIENT → SERVER:
+  submitInput({ data: { answers: [str, str] } }, callback)
+  submitVote({ targetId: matchup.id, choice: 'A'|'B' }, callback)
+  startGame({ gameType: 'QUIPLASH' }, callback)
+  nextPhase(callback)
+  resetRoom(callback)
+
+SERVER → CLIENT:
+  roomState(state)  ← Full game state including phase, players, scores
+
+END OF QUICK REFERENCE
+================================================================================
