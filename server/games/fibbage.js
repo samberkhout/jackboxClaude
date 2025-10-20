@@ -1,11 +1,17 @@
 // Fibbage Game Logic (Bluff + Truth)
+// Phase flow: INPUT -> VOTE -> REVEAL -> LEADERBOARD
 
 const QUESTIONS = [
   { question: "The world's oldest piece of chewing gum is over _____ years old.", truth: "9,000" },
   { question: "A group of flamingos is called a _____.", truth: "flamboyance" },
   { question: "The shortest war in history lasted _____ minutes.", truth: "38" },
   { question: "A jiffy is an actual unit of time equal to _____ of a second.", truth: "1/100" },
-  { question: "The unicorn is the national animal of _____.", truth: "Scotland" }
+  { question: "The unicorn is the national animal of _____.", truth: "Scotland" },
+  { question: "The first computer bug was an actual _____.", truth: "moth" },
+  { question: "Bananas are berries, but _____ are not.", truth: "strawberries" },
+  { question: "A single cloud can weigh more than _____ pounds.", truth: "1 million" },
+  { question: "Octopuses have _____ hearts.", truth: "three" },
+  { question: "The dot over the letter 'i' is called a _____.", truth: "tittle" }
 ];
 
 export function initRound(room) {
@@ -16,6 +22,7 @@ export function initRound(room) {
     lies: {},
     allOptions: [],
     votes: [],
+    likes: {}, // Track likes for each lie
     results: null
   };
 }
@@ -50,17 +57,28 @@ export function nextPhase(room) {
     }
 
     case 'VOTE': {
-      const { allOptions, votes, truth } = roundData;
+      const { allOptions, votes, likes, truth } = roundData;
       const scores = {};
 
+      // Process votes
       votes.forEach(vote => {
         const option = allOptions[vote.choice];
         if (option.type === 'truth') {
-          // Correct answer
+          // Correct answer - finder of truth
           scores[vote.voterId] = (scores[vote.voterId] || 0) + 500;
         } else if (option.type === 'lie') {
           // Fooled by a lie - liar gets points
           scores[option.playerId] = (scores[option.playerId] || 0) + 300;
+        }
+      });
+
+      // Process likes - small bonus points for funny lies
+      Object.entries(likes).forEach(([optionIndex, likers]) => {
+        const option = allOptions[parseInt(optionIndex)];
+        if (option && option.type === 'lie') {
+          // Each like gives the liar a small bonus
+          const likeCount = Array.isArray(likers) ? likers.length : 0;
+          scores[option.playerId] = (scores[option.playerId] || 0) + (likeCount * 50);
         }
       });
 
