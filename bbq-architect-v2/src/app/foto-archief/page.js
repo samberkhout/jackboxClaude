@@ -37,31 +37,79 @@ async function getClassifier(onProgress) {
     }
 }
 
+// Engelse CLIP-labels per NL categorienaam
+var CATEGORY_LABELS = {
+    'Food':  'BBQ food grilled meat dish plate',
+    'Gear':  'BBQ smoker equipment grill setup',
+    'Sfeer': 'people event crowd party atmosphere',
+    'Admin': 'document paper office invoice',
+};
+
+// BBQ-specifieke tag-woordenschat voor CLIP
+var TAG_VOCAB = [
+    'brisket', 'ribs', 'pulled pork', 'chicken wings', 'sausage',
+    'hamburger', 'grilled vegetables', 'BBQ sauce', 'smoke ring',
+    'food plating', 'garnish herbs',
+    'Yoder smoker', 'pellet grill', 'flat top griddle', 'charcoal fire',
+    'truss setup', 'catering equipment', 'tent event setup',
+    'outdoor crowd', 'happy guests', 'team cooking', 'night event',
+    'invoice document', 'menu card', 'whiteboard notes',
+    'sunny weather', 'rain', 'close up detail', 'wide angle shot',
+];
+
+// Drempelwaarde voor tags (hogere waarde = strenger, minder tags)
+var TAG_THRESHOLD = 0.12;
+
+async function analyseerFoto(file, categorieNamen, onProgress) {
+    var clf = await getClassifier(onProgress);
+    var url = URL.createObjectURL(file);
+
+    try {
+        // Stap 1: categorie classificatie
+        var catLabels = categorieNamen.map(function(naam) {
+            return CATEGORY_LABELS[naam] || naam;
+        });
+        var catResult = await clf(url, catLabels);
+        var bestLabel = catResult[0].label;
+        var catIdx = catLabels.indexOf(bestLabel);
+        var category = categorieNamen[catIdx >= 0 ? catIdx : 0];
+
+        // Stap 2: tag classificatie (zelfde model, andere labels)
+        var tagResult = await clf(url, TAG_VOCAB);
+        // Sorteer op score, filter boven drempel, pak top 5
+        var tags = tagResult
+            .filter(function(r) { return r.score >= TAG_THRESHOLD; })
+            .slice(0, 5)
+            .map(function(r) { return r.label; });
+
+        // Stap 3: beschrijving opbouwen zonder extra model
+        var topTag = tags[0] || category.toLowerCase();
+        var description = bouwBeschrijving(category, tags);
+
+        return { category: category, tags: tags, description: description };
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+function bouwBeschrijving(category, tags) {
+    var intro = {
+        'Food':  'Hop & Bites BBQ foto — ',
+        'Gear':  'Apparatuur & setup — ',
+        'Sfeer': 'Sfeerfoto — ',
+        'Admin': 'Administratie — ',
+    };
+    var prefix = intro[category] || (category + ' — ');
+    if (tags.length === 0) return prefix + category.toLowerCase() + ' fotografie';
+    return prefix + tags.slice(0, 3).join(', ');
+}
+
 async function classifeerLokaal(file, categorieNamen, onProgress) {
     try {
-        var clf = await getClassifier(onProgress);
-        // Maak tijdelijke object-URL voor het model
-        var url = URL.createObjectURL(file);
-        // Vertaal NL categorienamen naar Engelse hints voor CLIP
-        var labelMap = {
-            'Food':  'BBQ food grilled meat dish plate',
-            'Gear':  'BBQ smoker equipment grill setup',
-            'Sfeer': 'people event crowd party atmosphere',
-            'Admin': 'document paper office invoice',
-        };
-        var labels = categorieNamen.map(function(naam) {
-            return labelMap[naam] || naam;
-        });
-        var result = await clf(url, labels);
-        URL.revokeObjectURL(url);
-        // result is gesorteerd op score (hoog → laag)
-        var bestIdx = 0; // index in labels array = index in categorieNamen
-        var bestLabel = result[0].label;
-        var idx = labels.indexOf(bestLabel);
-        return categorieNamen[idx >= 0 ? idx : 0];
+        return await analyseerFoto(file, categorieNamen, onProgress);
     } catch(e) {
-        console.warn('[CLIP] Lokale classificatie mislukt:', e.message);
-        return null; // valt terug op Claude Vision in de API
+        console.warn('[CLIP] Lokale analyse mislukt:', e.message);
+        return null;
     }
 }
 
@@ -147,15 +195,14 @@ export default function FotoArchief() {
 
     // ── Upload één foto ────────────────────────────────────────────────────
     async function uploadEenFoto(file, allCatNames) {
-        // 1. Lokale CLIP classificatie
-        var predictedCategory = null;
+        // 1. Lokale CLIP analyse (categorie + tags + beschrijving)
+        var aiResult = null;
         try {
             setModelStatus('loading');
-            predictedCategory = await classifeerLokaal(
+            aiResult = await classifeerLokaal(
                 file,
                 allCatNames,
                 function(info) {
-                    // info.status = 'downloading' | 'progress' | 'done'
                     if (info.status === 'ready') setModelStatus('ready');
                 }
             );
@@ -164,15 +211,14 @@ export default function FotoArchief() {
             setModelStatus('error');
         }
 
-        // 2. Stuur naar API (met lokaal voorspelde categorie indien beschikbaar)
+        // 2. Stuur naar API
         var form = new FormData();
         form.append('photo', file);
         form.append('auto_edit', autoEdit ? 'true' : 'false');
-        if (allCatNames && allCatNames.length) {
-            form.append('categories', allCatNames.join(','));
-        }
-        if (predictedCategory) {
-            form.append('predicted_category', predictedCategory);
+        if (aiResult) {
+            form.append('predicted_category',    aiResult.category);
+            form.append('predicted_tags',        JSON.stringify(aiResult.tags));
+            form.append('predicted_description', aiResult.description);
         }
         var res = await fetch('/api/photo/upload', { method: 'POST', body: form });
         var data = await res.json();

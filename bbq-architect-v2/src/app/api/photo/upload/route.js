@@ -4,29 +4,25 @@
  * Flow:
  *  1. Ontvang afbeelding (multipart form-data)
  *  2. Upload origineel naar Supabase Storage (bucket: photo-logbook)
- *  3. Upload naar Cloudinary met auto-edit transformaties
- *  4. Stuur bewerkte Cloudinary-URL naar Claude Vision voor categorisatie
- *  5. Sla alles op in de photo_logbook tabel
+ *  3. Upload naar Cloudinary met auto-edit transformaties (optioneel)
+ *  4. Sla op in photo_logbook — categorie/tags/beschrijving komen van de client
+ *     (lokaal gegenereerd via CLIP in de browser, geen betaalde AI)
  *
  * Vereiste omgevingsvariabelen:
  *   NEXT_PUBLIC_SUPABASE_URL
  *   NEXT_PUBLIC_SUPABASE_ANON_KEY         (of SUPABASE_SERVICE_ROLE_KEY voor storage)
- *   CLOUDINARY_CLOUD_NAME
- *   CLOUDINARY_API_KEY
- *   CLOUDINARY_API_SECRET
- *   ANTHROPIC_API_KEY                     (Claude Vision)
+ *   CLOUDINARY_CLOUD_NAME                 (optioneel — voor auto-edit)
+ *   CLOUDINARY_API_KEY                    (optioneel)
+ *   CLOUDINARY_API_SECRET                 (optioneel)
  */
 
 import { createClient } from '@supabase/supabase-js';
-import Anthropic from '@anthropic-ai/sdk';
 import crypto from 'crypto';
 
 var supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
-
-var anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' });
 
 var CLOUDINARY_CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
 var CLOUDINARY_KEY   = process.env.CLOUDINARY_API_KEY || '';
@@ -78,89 +74,19 @@ async function uploadToCloudinary(buffer, mimeType, applyEdits) {
     return data.secure_url;
 }
 
-// ── Claude Vision categorisatie ────────────────────────────────────────────
-async function categoriseerMetClaude(imageBuffer, mimeType, extraCategories) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-        return { category: 'Admin', tags: [], description: 'Geen AI-sleutel geconfigureerd.' };
-    }
-
-    var base64 = Buffer.from(imageBuffer).toString('base64');
-
-    var baseCategories = [
-        { naam: 'Food',  omschrijving: 'BBQ-gerechten, vlees, sauzen, borden, presentatie' },
-        { naam: 'Gear',  omschrijving: 'Smokers, Yoder, Flat Top, truss, apparatuur, opbouw' },
-        { naam: 'Sfeer', omschrijving: 'Fair-opstelling, mensen, gasten, locatie, team, evenement' },
-        { naam: 'Admin', omschrijving: 'Documenten, offertes, facturen, labels, kantoor' },
-    ];
-
-    // Voeg extra (gebruiker-gedefinieerde) categorieën toe
-    var alleCategorieen = baseCategories.concat(
-        (extraCategories || [])
-            .filter(function(c) { return !baseCategories.find(function(b) { return b.naam === c; }); })
-            .map(function(c) { return { naam: c, omschrijving: 'Gebruikerscategorie' }; })
-    );
-
-    var catNamen = alleCategorieen.map(function(c) { return c.naam; }).join('|');
-    var catLijst = alleCategorieen.map(function(c) { return '- ' + c.naam + ' → ' + c.omschrijving; }).join('\n');
-
-    var response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 256,
-        messages: [{
-            role: 'user',
-            content: [
-                {
-                    type: 'image',
-                    source: {
-                        type: 'base64',
-                        media_type: mimeType,
-                        data: base64,
-                    },
-                },
-                {
-                    type: 'text',
-                    text: `Jij bent de visuele archivaris van Hop & Bites BBQ Catering.
-Analyseer de afbeelding en geef een JSON-object terug met exact deze structuur:
-{
-  "category": "<${catNamen}>",
-  "tags": ["<tag1>", "<tag2>", "<tag3>"],
-  "description": "<1 zin Nederlandse beschrijving>"
-}
-
-Categorieën:
-${catLijst}
-
-Geef ALLEEN het JSON-object, geen uitleg.`,
-                },
-            ],
-        }],
-    });
-
-    var text = response.content[0].type === 'text' ? response.content[0].text : '{}';
-    try {
-        var jsonMatch = text.match(/\{[\s\S]*\}/);
-        var parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-        var validCategories = alleCategorieen.map(function(c) { return c.naam; });
-        return {
-            category: validCategories.includes(parsed.category) ? parsed.category : 'Admin',
-            tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 10) : [],
-            description: parsed.description || '',
-        };
-    } catch (e) {
-        return { category: 'Admin', tags: [], description: text.slice(0, 200) };
-    }
-}
-
 // ── POST handler ───────────────────────────────────────────────────────────
 export async function POST(request) {
     try {
         var formData = await request.formData();
         var file = formData.get('photo');
         var eventId = formData.get('event_id') || null;
-        var applyEdits = formData.get('auto_edit') !== 'false'; // standaard aan
-        var categoriesRaw = formData.get('categories') || '';
-        var extraCategories = categoriesRaw ? categoriesRaw.split(',').map(function(c) { return c.trim(); }).filter(Boolean) : [];
-        var predictedCategory = formData.get('predicted_category') || null; // lokaal door CLIP bepaald
+        var applyEdits = formData.get('auto_edit') !== 'false';
+        // AI-resultaten worden lokaal in de browser bepaald via CLIP (geen betaalde API)
+        var predictedCategory    = formData.get('predicted_category')    || 'Admin';
+        var predictedDescription = formData.get('predicted_description') || '';
+        var predictedTagsRaw     = formData.get('predicted_tags')        || '[]';
+        var predictedTags;
+        try { predictedTags = JSON.parse(predictedTagsRaw); } catch(e) { predictedTags = []; }
 
         if (!file || typeof file === 'string') {
             return Response.json({ error: 'Geen foto ontvangen (veld: photo)' }, { status: 400 });
@@ -187,26 +113,11 @@ export async function POST(request) {
         var { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(bestandsnaam);
         var originalUrl = publicUrl;
 
-        // 2. Cloudinary auto-edit + AI categorisatie
-        // Als de client al een lokale CLIP-voorspelling meestuurt, sla Claude Vision over
-        var aiPromise;
-        if (predictedCategory) {
-            // Lokale classificatie beschikbaar — gebruik die direct, geen API-kosten
-            aiPromise = Promise.resolve({ category: predictedCategory, tags: [], description: '' });
-        } else {
-            aiPromise = categoriseerMetClaude(buffer, mimeType, extraCategories).catch(function(e) {
-                console.warn('[photo-upload] Claude Vision fout (niet fataal):', e.message);
-                return { category: 'Admin', tags: [], description: '' };
-            });
-        }
-
-        var [editedUrl, aiResult] = await Promise.all([
-            uploadToCloudinary(buffer, mimeType, applyEdits).catch(function(e) {
-                console.warn('[photo-upload] Cloudinary fout (niet fataal):', e.message);
-                return null;
-            }),
-            aiPromise,
-        ]);
+        // 2. Cloudinary auto-edit (parallel uploadbaar, AI komt van client)
+        var editedUrl = await uploadToCloudinary(buffer, mimeType, applyEdits).catch(function(e) {
+            console.warn('[photo-upload] Cloudinary fout (niet fataal):', e.message);
+            return null;
+        });
 
         // 3. Sla op in photo_logbook
         var { data: foto, error: dbError } = await supabase
@@ -214,9 +125,9 @@ export async function POST(request) {
             .insert({
                 original_url:   originalUrl,
                 edited_url:     editedUrl || originalUrl,
-                category:       aiResult.category,
-                ai_tags:        aiResult.tags,
-                ai_description: aiResult.description,
+                category:       predictedCategory,
+                ai_tags:        predictedTags,
+                ai_description: predictedDescription,
                 event_id:       eventId || null,
             })
             .select()
@@ -228,7 +139,6 @@ export async function POST(request) {
             success: true,
             foto: foto,
             cloudinary: !!editedUrl,
-            ai_used: !!process.env.ANTHROPIC_API_KEY,
         });
     } catch (err) {
         console.error('[photo-upload]', err);
