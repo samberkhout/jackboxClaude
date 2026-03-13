@@ -160,6 +160,7 @@ export async function POST(request) {
         var applyEdits = formData.get('auto_edit') !== 'false'; // standaard aan
         var categoriesRaw = formData.get('categories') || '';
         var extraCategories = categoriesRaw ? categoriesRaw.split(',').map(function(c) { return c.trim(); }).filter(Boolean) : [];
+        var predictedCategory = formData.get('predicted_category') || null; // lokaal door CLIP bepaald
 
         if (!file || typeof file === 'string') {
             return Response.json({ error: 'Geen foto ontvangen (veld: photo)' }, { status: 400 });
@@ -186,16 +187,25 @@ export async function POST(request) {
         var { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(bestandsnaam);
         var originalUrl = publicUrl;
 
-        // 2. Cloudinary auto-edit (parallel met AI categorisatie)
+        // 2. Cloudinary auto-edit + AI categorisatie
+        // Als de client al een lokale CLIP-voorspelling meestuurt, sla Claude Vision over
+        var aiPromise;
+        if (predictedCategory) {
+            // Lokale classificatie beschikbaar — gebruik die direct, geen API-kosten
+            aiPromise = Promise.resolve({ category: predictedCategory, tags: [], description: '' });
+        } else {
+            aiPromise = categoriseerMetClaude(buffer, mimeType, extraCategories).catch(function(e) {
+                console.warn('[photo-upload] Claude Vision fout (niet fataal):', e.message);
+                return { category: 'Admin', tags: [], description: '' };
+            });
+        }
+
         var [editedUrl, aiResult] = await Promise.all([
             uploadToCloudinary(buffer, mimeType, applyEdits).catch(function(e) {
                 console.warn('[photo-upload] Cloudinary fout (niet fataal):', e.message);
                 return null;
             }),
-            categoriseerMetClaude(buffer, mimeType, extraCategories).catch(function(e) {
-                console.warn('[photo-upload] Claude Vision fout (niet fataal):', e.message);
-                return { category: 'Admin', tags: [], description: '' };
-            }),
+            aiPromise,
         ]);
 
         // 3. Sla op in photo_logbook

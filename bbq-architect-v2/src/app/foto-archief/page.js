@@ -2,6 +2,69 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import JSZip from 'jszip';
 
+// ── Lokale CLIP classifier (Transformers.js) ───────────────────────────────
+// Model wordt eenmalig geladen en gecached in de browser (IndexedDB)
+var classifierRef = null;
+var classifierLoading = false;
+var classifierCallbacks = [];
+
+async function getClassifier(onProgress) {
+    if (classifierRef) return classifierRef;
+
+    if (classifierLoading) {
+        return new Promise(function(resolve) { classifierCallbacks.push(resolve); });
+    }
+
+    classifierLoading = true;
+    try {
+        var { pipeline, env } = await import('@huggingface/transformers');
+        // Gebruik WASM backend zodat het in browser werkt zonder GPU
+        env.allowLocalModels = false;
+
+        var clf = await pipeline(
+            'zero-shot-image-classification',
+            'Xenova/clip-vit-base-patch32',
+            {
+                progress_callback: onProgress || null,
+            }
+        );
+        classifierRef = clf;
+        classifierCallbacks.forEach(function(cb) { cb(clf); });
+        classifierCallbacks = [];
+        return clf;
+    } finally {
+        classifierLoading = false;
+    }
+}
+
+async function classifeerLokaal(file, categorieNamen, onProgress) {
+    try {
+        var clf = await getClassifier(onProgress);
+        // Maak tijdelijke object-URL voor het model
+        var url = URL.createObjectURL(file);
+        // Vertaal NL categorienamen naar Engelse hints voor CLIP
+        var labelMap = {
+            'Food':  'BBQ food grilled meat dish plate',
+            'Gear':  'BBQ smoker equipment grill setup',
+            'Sfeer': 'people event crowd party atmosphere',
+            'Admin': 'document paper office invoice',
+        };
+        var labels = categorieNamen.map(function(naam) {
+            return labelMap[naam] || naam;
+        });
+        var result = await clf(url, labels);
+        URL.revokeObjectURL(url);
+        // result is gesorteerd op score (hoog → laag)
+        var bestIdx = 0; // index in labels array = index in categorieNamen
+        var bestLabel = result[0].label;
+        var idx = labels.indexOf(bestLabel);
+        return categorieNamen[idx >= 0 ? idx : 0];
+    } catch(e) {
+        console.warn('[CLIP] Lokale classificatie mislukt:', e.message);
+        return null; // valt terug op Claude Vision in de API
+    }
+}
+
 var DEFAULT_CATEGORIES = ['Food', 'Gear', 'Sfeer', 'Admin'];
 var STORAGE_KEY = 'fa_custom_categories';
 
@@ -40,6 +103,7 @@ export default function FotoArchief() {
     var [fotos, setFotos] = useState([]);
     var [loading, setLoading] = useState(true);
     var [batchProgress, setBatchProgress] = useState(null); // null | { total, done, errors, msg, phase }
+    var [modelStatus, setModelStatus] = useState('idle'); // idle | loading | ready | error
     var [lightbox, setLightbox] = useState(null);
     var [dragOver, setDragOver] = useState(false);
     var [autoEdit, setAutoEdit] = useState(true);
@@ -83,11 +147,32 @@ export default function FotoArchief() {
 
     // ── Upload één foto ────────────────────────────────────────────────────
     async function uploadEenFoto(file, allCatNames) {
+        // 1. Lokale CLIP classificatie
+        var predictedCategory = null;
+        try {
+            setModelStatus('loading');
+            predictedCategory = await classifeerLokaal(
+                file,
+                allCatNames,
+                function(info) {
+                    // info.status = 'downloading' | 'progress' | 'done'
+                    if (info.status === 'ready') setModelStatus('ready');
+                }
+            );
+            setModelStatus('ready');
+        } catch(e) {
+            setModelStatus('error');
+        }
+
+        // 2. Stuur naar API (met lokaal voorspelde categorie indien beschikbaar)
         var form = new FormData();
         form.append('photo', file);
         form.append('auto_edit', autoEdit ? 'true' : 'false');
         if (allCatNames && allCatNames.length) {
             form.append('categories', allCatNames.join(','));
+        }
+        if (predictedCategory) {
+            form.append('predicted_category', predictedCategory);
         }
         var res = await fetch('/api/photo/upload', { method: 'POST', body: form });
         var data = await res.json();
@@ -294,6 +379,16 @@ export default function FotoArchief() {
                         />
                         <span>Auto-edit</span>
                     </label>
+                    {modelStatus === 'loading' && (
+                        <span className="fa-model-status fa-model-status--loading">
+                            <span className="fa-spinner"></span> AI-model laden...
+                        </span>
+                    )}
+                    {modelStatus === 'ready' && (
+                        <span className="fa-model-status fa-model-status--ready">
+                            <i className="fa-solid fa-microchip"></i> Lokaal
+                        </span>
+                    )}
                 </div>
             </div>
 
