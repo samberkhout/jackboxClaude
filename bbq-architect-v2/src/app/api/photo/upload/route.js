@@ -3,75 +3,38 @@
  *
  * Flow:
  *  1. Ontvang afbeelding (multipart form-data)
- *  2. Upload origineel naar Supabase Storage (bucket: photo-logbook)
- *  3. Upload naar Cloudinary met auto-edit transformaties (optioneel)
+ *  2. Bewerk lokaal met Sharp: EXIF-rotatie, 4:3 crop, normalize, saturation
+ *  3. Upload origineel + bewerkte versie naar Supabase Storage
  *  4. Sla op in photo_logbook — categorie/tags/beschrijving komen van de client
  *     (lokaal gegenereerd via CLIP in de browser, geen betaalde AI)
  *
  * Vereiste omgevingsvariabelen:
  *   NEXT_PUBLIC_SUPABASE_URL
- *   NEXT_PUBLIC_SUPABASE_ANON_KEY         (of SUPABASE_SERVICE_ROLE_KEY voor storage)
- *   CLOUDINARY_CLOUD_NAME                 (optioneel — voor auto-edit)
- *   CLOUDINARY_API_KEY                    (optioneel)
- *   CLOUDINARY_API_SECRET                 (optioneel)
+ *   NEXT_PUBLIC_SUPABASE_ANON_KEY  (of SUPABASE_SERVICE_ROLE_KEY voor storage)
  */
 
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import sharp from 'sharp';
 
 var supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-var CLOUDINARY_CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
-var CLOUDINARY_KEY   = process.env.CLOUDINARY_API_KEY || '';
-var CLOUDINARY_SECRET = process.env.CLOUDINARY_API_SECRET || '';
 var BUCKET = 'photo-logbook';
 
-// ── Cloudinary upload via signed REST API ──────────────────────────────────
-async function uploadToCloudinary(buffer, mimeType, applyEdits) {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_KEY || !CLOUDINARY_SECRET) {
-        return null; // Cloudinary niet geconfigureerd — sla editstap over
-    }
-
-    var timestamp = Math.floor(Date.now() / 1000).toString();
-    var folder = 'hop-bites-foto-archief';
-
-    // Transformaties voor professionele BBQ-vibe:
-    //  a_auto          — automatisch rechttrekken (horizon detectie)
-    //  c_fill,ar_4:3   — smart crop naar 4:3
-    //  g_auto          — onderwerp als focal point
-    //  e_improve       — algemene kleurverbetering
-    //  e_viesus_correct — Cloudinary AI kleurcorrectie
-    var transformation = applyEdits
-        ? 'a_auto/c_fill,ar_4:3,g_auto/e_improve/e_viesus_correct'
-        : '';
-
-    var paramsToSign = 'folder=' + folder + '&timestamp=' + timestamp;
-    if (transformation) paramsToSign += '&transformation=' + transformation;
-
-    var signature = crypto
-        .createHash('sha1')
-        .update(paramsToSign + CLOUDINARY_SECRET)
-        .digest('hex');
-
-    var form = new FormData();
-    form.append('file', new Blob([buffer], { type: mimeType }));
-    form.append('api_key', CLOUDINARY_KEY);
-    form.append('timestamp', timestamp);
-    form.append('folder', folder);
-    form.append('signature', signature);
-    if (transformation) form.append('transformation', transformation);
-
-    var url = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload';
-    var res = await fetch(url, { method: 'POST', body: form });
-    if (!res.ok) {
-        var err = await res.text();
-        throw new Error('Cloudinary upload mislukt: ' + err);
-    }
-    var data = await res.json();
-    return data.secure_url;
+// ── Lokale bewerking met Sharp ─────────────────────────────────────────────
+async function bewerkFoto(buffer) {
+    return sharp(buffer)
+        .rotate()                                  // EXIF auto-rotate
+        .resize(1200, 900, {                       // 4:3, center crop
+            fit: 'cover',
+            position: 'centre',
+        })
+        .normalize()                               // auto contrast/brightness
+        .modulate({ saturation: 1.15 })            // lichte saturation boost
+        .jpeg({ quality: 85, mozjpeg: true })
+        .toBuffer();
 }
 
 // ── POST handler ───────────────────────────────────────────────────────────
@@ -113,11 +76,23 @@ export async function POST(request) {
         var { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(bestandsnaam);
         var originalUrl = publicUrl;
 
-        // 2. Cloudinary auto-edit (parallel uploadbaar, AI komt van client)
-        var editedUrl = await uploadToCloudinary(buffer, mimeType, applyEdits).catch(function(e) {
-            console.warn('[photo-upload] Cloudinary fout (niet fataal):', e.message);
-            return null;
-        });
+        // 2. Lokale bewerking met Sharp (optioneel)
+        var editedUrl = originalUrl;
+        if (applyEdits) {
+            try {
+                var editedBuffer = await bewerkFoto(buffer);
+                var editedNaam = 'edited_' + bestandsnaam.replace(/\.\w+$/, '.jpg');
+                var { error: editError } = await supabase.storage
+                    .from(BUCKET)
+                    .upload(editedNaam, editedBuffer, { contentType: 'image/jpeg', upsert: false });
+                if (!editError) {
+                    var { data: { publicUrl: editedPublicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(editedNaam);
+                    editedUrl = editedPublicUrl;
+                }
+            } catch(e) {
+                console.warn('[photo-upload] Sharp bewerking mislukt (niet fataal):', e.message);
+            }
+        }
 
         // 3. Sla op in photo_logbook
         var { data: foto, error: dbError } = await supabase
@@ -138,7 +113,7 @@ export async function POST(request) {
         return Response.json({
             success: true,
             foto: foto,
-            cloudinary: !!editedUrl,
+            edited: editedUrl !== originalUrl,
         });
     } catch (err) {
         console.error('[photo-upload]', err);

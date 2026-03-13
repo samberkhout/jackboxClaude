@@ -417,7 +417,7 @@ export default function FotoArchief() {
                         <i className="fa-solid fa-tags"></i>
                         <span>Categorieën</span>
                     </button>
-                    <label className="fa-toggle-label" title="Automatisch bewerken met Cloudinary AI">
+                    <label className="fa-toggle-label" title="Rechttrekken, 4:3 crop en kleurcorrectie via Sharp (lokaal, gratis)">
                         <input
                             type="checkbox"
                             checked={autoEdit}
