@@ -3,6 +3,7 @@ import Script from 'next/script';
 import Sidebar from '@/components/Sidebar';
 import ToastProvider from '@/components/Toast';
 import ConfirmProvider from '@/components/ConfirmDialog';
+import SousChef from '@/components/SousChef';
 
 export const metadata = {
   title: 'BBQ Architect — Hop & Bites',
@@ -41,6 +42,8 @@ export default function RootLayout({ children }) {
                         </div>
                     </ConfirmProvider>
                 </ToastProvider>
+
+                <SousChef />
 
                 {/* Service Worker registratie */}
                 <Script id="sw-register" strategy="afterInteractive">{`
