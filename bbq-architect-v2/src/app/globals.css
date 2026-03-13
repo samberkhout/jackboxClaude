@@ -4590,3 +4590,160 @@ body {
   flex-wrap: wrap;
   gap: 5px;
 }
+
+/* Upload knop secondary ──────────────────────────────────── */
+.fa-upload-btn--secondary {
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.fa-upload-btn--secondary:hover { background: rgba(255,255,255,.12); opacity: 1; }
+
+/* Batch progress bar ─────────────────────────────────────── */
+.fa-progress-bar {
+  flex: 1;
+  height: 5px;
+  background: rgba(255,255,255,.12);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 80px;
+}
+.fa-progress-fill {
+  height: 100%;
+  background: var(--brand);
+  border-radius: 4px;
+  transition: width .3s ease;
+}
+
+/* Categorie modal ────────────────────────────────────────── */
+.fa-cat-modal {
+  background: var(--card-bg, #1A1A1A);
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.1);
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.fa-cat-modal h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fa-cat-section {
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.fa-cat-section:last-child { border-bottom: none; }
+.fa-cat-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.fa-cat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fa-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.04);
+  font-size: 13.5px;
+}
+
+.fa-cat-naam { flex: 1; font-weight: 600; }
+
+.fa-cat-fixed {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--muted);
+  background: rgba(255,255,255,.07);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.fa-cat-delete-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  transition: color .15s, background .15s;
+}
+.fa-cat-delete-btn:hover { color: #FF5050; background: rgba(255,80,80,.1); }
+
+/* Categorie toevoegen form ───────────────────────────────── */
+.fa-cat-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fa-cat-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+  box-sizing: border-box;
+}
+.fa-cat-input:focus { border-color: var(--brand); }
+
+.fa-cat-kleur-row,
+.fa-cat-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fa-kleur-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform .1s;
+  flex-shrink: 0;
+  padding: 0;
+}
+.fa-kleur-dot:hover { transform: scale(1.2); }
+.fa-kleur-dot--actief { border-color: #fff; transform: scale(1.15); }
+
+.fa-icon-opt {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 7px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  transition: background .15s, color .15s;
+}
+.fa-icon-opt:hover { background: rgba(255,255,255,.1); color: var(--text); }
+.fa-icon-opt--actief { background: rgba(255,191,0,.12); border-color: var(--brand); }

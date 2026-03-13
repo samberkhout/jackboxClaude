@@ -1,108 +1,215 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import JSZip from 'jszip';
 
-var CATEGORIES = ['Alles', 'Food', 'Gear', 'Sfeer', 'Admin'];
+var DEFAULT_CATEGORIES = ['Food', 'Gear', 'Sfeer', 'Admin'];
+var STORAGE_KEY = 'fa_custom_categories';
 
-var CATEGORY_ICONS = {
-    Alles: 'fa-images',
+var DEFAULT_ICONS = {
     Food:  'fa-drumstick-bite',
     Gear:  'fa-fire-burner',
     Sfeer: 'fa-people-group',
     Admin: 'fa-folder-open',
 };
-
-var CATEGORY_COLORS = {
+var DEFAULT_COLORS = {
     Food:  '#FF6B35',
     Gear:  '#FFBF00',
     Sfeer: '#4ECDC4',
     Admin: '#95A5A6',
 };
 
+var PALETTE = ['#FF6B35','#FFBF00','#4ECDC4','#95A5A6','#E74C3C','#3498DB','#9B59B6','#2ECC71','#E67E22','#1ABC9C'];
+var ICON_OPTIES = [
+    'fa-tag','fa-star','fa-heart','fa-camera','fa-utensils','fa-truck','fa-music',
+    'fa-glass-cheers','fa-wine-glass','fa-cake-candles','fa-clipboard','fa-box',
+];
+
+function loadCustomCategories() {
+    try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch(e) { return []; }
+}
+function saveCustomCategories(cats) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
+}
+
 export default function FotoArchief() {
+    var [customCategories, setCustomCategories] = useState([]);
     var [activeCategory, setActiveCategory] = useState('Alles');
     var [fotos, setFotos] = useState([]);
     var [loading, setLoading] = useState(true);
-    var [uploading, setUploading] = useState(false);
-    var [uploadProgress, setUploadProgress] = useState(null); // null | 'uploading' | 'editing' | 'categorising' | 'done' | 'error'
-    var [uploadMsg, setUploadMsg] = useState('');
-    var [lightbox, setLightbox] = useState(null); // { foto, showEdited }
+    var [batchProgress, setBatchProgress] = useState(null); // null | { total, done, errors, msg, phase }
+    var [lightbox, setLightbox] = useState(null);
     var [dragOver, setDragOver] = useState(false);
     var [autoEdit, setAutoEdit] = useState(true);
+    var [showCatModal, setShowCatModal] = useState(false);
+    var [newCatNaam, setNewCatNaam] = useState('');
+    var [newCatKleur, setNewCatKleur] = useState('#3498DB');
+    var [newCatIcon, setNewCatIcon] = useState('fa-tag');
     var fileInputRef = useRef(null);
+
+    // Laad custom categorieën uit localStorage
+    useEffect(function() {
+        setCustomCategories(loadCustomCategories());
+    }, []);
+
+    // Alle categorieën (vaste + custom)
+    var alleCategorieen = DEFAULT_CATEGORIES.concat(customCategories.map(function(c) { return c.naam; }));
+    var alleTabs = ['Alles'].concat(alleCategorieen);
+
+    function getCatIcon(cat) {
+        if (DEFAULT_ICONS[cat]) return DEFAULT_ICONS[cat];
+        var c = customCategories.find(function(x) { return x.naam === cat; });
+        return c ? c.icon : 'fa-tag';
+    }
+    function getCatKleur(cat) {
+        if (DEFAULT_COLORS[cat]) return DEFAULT_COLORS[cat];
+        var c = customCategories.find(function(x) { return x.naam === cat; });
+        return c ? c.kleur : '#95A5A6';
+    }
 
     var laadFotos = useCallback(function() {
         setLoading(true);
-        var url = '/api/photo/upload?limit=200' + (activeCategory !== 'Alles' ? '&category=' + activeCategory : '');
+        var url = '/api/photo/upload?limit=200' + (activeCategory !== 'Alles' ? '&category=' + encodeURIComponent(activeCategory) : '');
         fetch(url)
             .then(function(r) { return r.json(); })
-            .then(function(data) {
-                setFotos(data.fotos || []);
-            })
+            .then(function(data) { setFotos(data.fotos || []); })
             .catch(function(e) { console.error(e); })
             .finally(function() { setLoading(false); });
     }, [activeCategory]);
 
     useEffect(function() { laadFotos(); }, [laadFotos]);
 
-    // ── Upload logica ──────────────────────────────────────────────────────
-    async function uploadFoto(file) {
-        if (!file || !file.type.startsWith('image/')) {
-            setUploadMsg('Alleen afbeeldingen (JPEG, PNG, WebP, HEIC).');
-            setUploadProgress('error');
-            return;
+    // ── Upload één foto ────────────────────────────────────────────────────
+    async function uploadEenFoto(file, allCatNames) {
+        var form = new FormData();
+        form.append('photo', file);
+        form.append('auto_edit', autoEdit ? 'true' : 'false');
+        if (allCatNames && allCatNames.length) {
+            form.append('categories', allCatNames.join(','));
         }
-        setUploading(true);
-        setUploadProgress('uploading');
-        setUploadMsg('Foto uploaden...');
+        var res = await fetch('/api/photo/upload', { method: 'POST', body: form });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload mislukt');
+        return data;
+    }
 
+    // ── Batch upload meerdere bestanden ────────────────────────────────────
+    async function batchUpload(files) {
+        var allCatNames = alleCategorieen;
+        var total = files.length;
+        var errors = 0;
+
+        setBatchProgress({ total, done: 0, errors: 0, msg: 'Starten...', phase: 'uploading' });
+
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            setBatchProgress({ total, done: i, errors, msg: 'Uploaden ' + (i + 1) + ' van ' + total + ': ' + file.name, phase: 'uploading' });
+            try {
+                if (!file.type.startsWith('image/')) {
+                    errors++;
+                    continue;
+                }
+                await uploadEenFoto(file, allCatNames);
+            } catch(e) {
+                console.warn('Upload fout:', file.name, e);
+                errors++;
+            }
+        }
+
+        var phase = errors === total ? 'error' : 'done';
+        var msg = errors === 0
+            ? total + ' foto' + (total === 1 ? '' : "'s") + ' succesvol geüpload!'
+            : (total - errors) + ' van ' + total + ' geüpload. ' + errors + ' mislukt.';
+
+        setBatchProgress({ total, done: total - errors, errors, msg, phase });
+        laadFotos();
+        setTimeout(function() { setBatchProgress(null); }, 4000);
+    }
+
+    // ── ZIP extractie ──────────────────────────────────────────────────────
+    async function verwerkZip(zipFile) {
+        setBatchProgress({ total: 0, done: 0, errors: 0, msg: 'ZIP uitpakken...', phase: 'uploading' });
         try {
-            var form = new FormData();
-            form.append('photo', file);
-            form.append('auto_edit', autoEdit ? 'true' : 'false');
+            var zip = await JSZip.loadAsync(zipFile);
+            var imageExtensions = /\.(jpe?g|png|webp|heic)$/i;
+            var entries = [];
+            zip.forEach(function(relativePath, entry) {
+                if (!entry.dir && imageExtensions.test(relativePath)) {
+                    entries.push({ path: relativePath, entry });
+                }
+            });
 
-            setUploadProgress('editing');
-            setUploadMsg(autoEdit ? 'AI bewerkt de foto (rechttrekken, crop, kleur)...' : 'Foto verwerken...');
+            if (entries.length === 0) {
+                setBatchProgress({ total: 0, done: 0, errors: 0, msg: 'Geen afbeeldingen gevonden in ZIP.', phase: 'error' });
+                setTimeout(function() { setBatchProgress(null); }, 3000);
+                return;
+            }
 
-            var res = await fetch('/api/photo/upload', { method: 'POST', body: form });
-            var data = await res.json();
+            // Converteer ZIP entries naar File objecten
+            var files = [];
+            for (var i = 0; i < entries.length; i++) {
+                var { path, entry } = entries[i];
+                var blob = await entry.async('blob');
+                var ext = path.split('.').pop().toLowerCase();
+                var mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+                    : ext === 'png' ? 'image/png'
+                    : ext === 'webp' ? 'image/webp'
+                    : 'image/heic';
+                var naam = path.split('/').pop();
+                var file = new File([blob], naam, { type: mime });
+                files.push(file);
+            }
 
-            if (!res.ok) throw new Error(data.error || 'Upload mislukt');
-
-            setUploadProgress('categorising');
-            setUploadMsg('AI categoriseert de foto...');
-
-            // Kleine vertraging zodat de gebruiker de stap ziet
-            await new Promise(function(r) { setTimeout(r, 600); });
-
-            setUploadProgress('done');
-            setUploadMsg(
-                'Opgeslagen als ' + data.foto.category +
-                (data.cloudinary ? ' · Cloudinary-bewerking toegepast' : '') +
-                (data.ai_used ? ' · Gecategoriseerd door Claude Vision' : '')
-            );
-            laadFotos();
-            setTimeout(function() { setUploadProgress(null); setUploadMsg(''); }, 3500);
-        } catch (err) {
-            setUploadProgress('error');
-            setUploadMsg(err.message);
-        } finally {
-            setUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
+            await batchUpload(files);
+        } catch(e) {
+            setBatchProgress({ total: 0, done: 0, errors: 0, msg: 'ZIP kon niet worden geopend: ' + e.message, phase: 'error' });
+            setTimeout(function() { setBatchProgress(null); }, 3000);
         }
     }
 
-    function handleFileChange(e) {
+    // ── File input handler ─────────────────────────────────────────────────
+    async function handleFileChange(e) {
         var files = Array.from(e.target.files || []);
-        files.forEach(function(f) { uploadFoto(f); });
+        if (files.length === 0) return;
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        // Check of er een ZIP bij zit
+        var zipFiles = files.filter(function(f) { return f.name.toLowerCase().endsWith('.zip'); });
+        var imageFiles = files.filter(function(f) { return f.type.startsWith('image/'); });
+
+        if (zipFiles.length > 0) {
+            // Verwerk ZIP(s) één voor één
+            for (var zf of zipFiles) {
+                await verwerkZip(zf);
+            }
+            // Plus losse afbeeldingen als die ook geselecteerd waren
+            if (imageFiles.length > 0) await batchUpload(imageFiles);
+        } else {
+            await batchUpload(imageFiles);
+        }
     }
 
-    function handleDrop(e) {
+    // ── Drag & drop ────────────────────────────────────────────────────────
+    async function handleDrop(e) {
         e.preventDefault();
         setDragOver(false);
         var files = Array.from(e.dataTransfer.files || []);
-        files.forEach(function(f) { uploadFoto(f); });
+        if (files.length === 0) return;
+
+        var zipFiles = files.filter(function(f) { return f.name.toLowerCase().endsWith('.zip'); });
+        var imageFiles = files.filter(function(f) { return f.type.startsWith('image/'); });
+
+        if (zipFiles.length > 0) {
+            for (var zf of zipFiles) await verwerkZip(zf);
+            if (imageFiles.length > 0) await batchUpload(imageFiles);
+        } else {
+            await batchUpload(imageFiles);
+        }
     }
 
+    // ── Foto verwijderen ───────────────────────────────────────────────────
     async function verwijderFoto(id, e) {
         e.stopPropagation();
         if (!confirm('Foto definitief verwijderen?')) return;
@@ -111,12 +218,24 @@ export default function FotoArchief() {
         laadFotos();
     }
 
-    // ── Statistieken per categorie ─────────────────────────────────────────
-    function aantalPerCategorie(cat) {
-        if (cat === 'Alles') return fotos.length;
-        // Als we gefilterd laden, klopt dit alleen bij 'Alles'-tab
-        // Toon — als we niet op Alles staan
-        return null;
+    // ── Categorie beheer ───────────────────────────────────────────────────
+    function voegCatToe() {
+        var naam = newCatNaam.trim();
+        if (!naam || alleTabs.includes(naam)) return;
+        var updated = customCategories.concat([{ naam, kleur: newCatKleur, icon: newCatIcon }]);
+        setCustomCategories(updated);
+        saveCustomCategories(updated);
+        setNewCatNaam('');
+        setNewCatKleur('#3498DB');
+        setNewCatIcon('fa-tag');
+    }
+
+    function verwijderCat(naam) {
+        if (!confirm('Categorie "' + naam + '" verwijderen?')) return;
+        var updated = customCategories.filter(function(c) { return c.naam !== naam; });
+        setCustomCategories(updated);
+        saveCustomCategories(updated);
+        if (activeCategory === naam) setActiveCategory('Alles');
     }
 
     // ── Lightbox keyboard ──────────────────────────────────────────────────
@@ -147,18 +266,26 @@ export default function FotoArchief() {
                     <p className="fa-subtitle">AI-powered bewerking &amp; automatische categorisatie</p>
                 </div>
                 <div className="fa-header-right">
-                    <label className="fa-upload-btn" title="Foto uploaden">
+                    <label className="fa-upload-btn" title="Foto's of ZIP uploaden">
                         <i className="fa-solid fa-cloud-arrow-up"></i>
-                        <span>Foto Uploaden</span>
+                        <span>Uploaden</span>
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/jpeg,image/png,image/webp,image/heic"
+                            accept="image/jpeg,image/png,image/webp,image/heic,.zip,application/zip"
                             multiple
                             style={{ display: 'none' }}
                             onChange={handleFileChange}
                         />
                     </label>
+                    <button
+                        className="fa-upload-btn fa-upload-btn--secondary"
+                        title="Categorieën beheren"
+                        onClick={function() { setShowCatModal(true); }}
+                    >
+                        <i className="fa-solid fa-tags"></i>
+                        <span>Categorieën</span>
+                    </button>
                     <label className="fa-toggle-label" title="Automatisch bewerken met Cloudinary AI">
                         <input
                             type="checkbox"
@@ -171,14 +298,20 @@ export default function FotoArchief() {
             </div>
 
             {/* Upload progress banner */}
-            {uploadProgress && (
-                <div className={'fa-upload-banner fa-upload-banner--' + uploadProgress}>
-                    {uploadProgress === 'done' && <i className="fa-solid fa-circle-check"></i>}
-                    {uploadProgress === 'error' && <i className="fa-solid fa-circle-exclamation"></i>}
-                    {(uploadProgress === 'uploading' || uploadProgress === 'editing' || uploadProgress === 'categorising') && (
-                        <span className="fa-spinner"></span>
+            {batchProgress && (
+                <div className={'fa-upload-banner fa-upload-banner--' + batchProgress.phase}>
+                    {batchProgress.phase === 'done' && <i className="fa-solid fa-circle-check"></i>}
+                    {batchProgress.phase === 'error' && <i className="fa-solid fa-circle-exclamation"></i>}
+                    {batchProgress.phase === 'uploading' && <span className="fa-spinner"></span>}
+                    <span>{batchProgress.msg}</span>
+                    {batchProgress.phase === 'uploading' && batchProgress.total > 1 && (
+                        <div className="fa-progress-bar">
+                            <div
+                                className="fa-progress-fill"
+                                style={{ width: Math.round((batchProgress.done / batchProgress.total) * 100) + '%' }}
+                            ></div>
+                        </div>
                     )}
-                    <span>{uploadMsg}</span>
                 </div>
             )}
 
@@ -190,22 +323,22 @@ export default function FotoArchief() {
                 onDrop={handleDrop}
             >
                 <i className="fa-solid fa-cloud-arrow-up"></i>
-                <span>Sleep foto's hierheen of gebruik de knop</span>
+                <span>Sleep foto's of een ZIP-bestand hierheen · of selecteer via de knop</span>
             </div>
 
             {/* Categorie tabs */}
             <div className="fa-tabs">
-                {CATEGORIES.map(function(cat) {
+                {alleTabs.map(function(cat) {
+                    var isActief = activeCategory === cat;
+                    var kleur = cat === 'Alles' ? null : getCatKleur(cat);
                     return (
                         <button
                             key={cat}
-                            className={'fa-tab' + (activeCategory === cat ? ' fa-tab--active' : '')}
-                            style={activeCategory === cat && cat !== 'Alles'
-                                ? { borderColor: CATEGORY_COLORS[cat], color: CATEGORY_COLORS[cat] }
-                                : {}}
+                            className={'fa-tab' + (isActief ? ' fa-tab--active' : '')}
+                            style={isActief && cat !== 'Alles' ? { borderColor: kleur, color: kleur } : {}}
                             onClick={function() { setActiveCategory(cat); }}
                         >
-                            <i className={'fa-solid ' + CATEGORY_ICONS[cat]}></i>
+                            <i className={'fa-solid ' + (cat === 'Alles' ? 'fa-images' : getCatIcon(cat))}></i>
                             <span>{cat}</span>
                             {cat === 'Alles' && !loading && (
                                 <span className="fa-tab-count">{fotos.length}</span>
@@ -223,13 +356,13 @@ export default function FotoArchief() {
                 </div>
             ) : fotos.length === 0 ? (
                 <div className="fa-empty">
-                    <i className={'fa-solid ' + CATEGORY_ICONS[activeCategory]}></i>
+                    <i className={'fa-solid ' + (activeCategory === 'Alles' ? 'fa-images' : getCatIcon(activeCategory))}></i>
                     <p>Nog geen foto's in {activeCategory === 'Alles' ? 'het archief' : 'de map ' + activeCategory}</p>
                     <label className="fa-upload-btn fa-upload-btn--ghost">
                         <i className="fa-solid fa-plus"></i> Eerste foto uploaden
                         <input
                             type="file"
-                            accept="image/jpeg,image/png,image/webp,image/heic"
+                            accept="image/jpeg,image/png,image/webp,image/heic,.zip,application/zip"
                             multiple
                             style={{ display: 'none' }}
                             onChange={handleFileChange}
@@ -239,14 +372,13 @@ export default function FotoArchief() {
             ) : (
                 <div className="fa-grid">
                     {fotos.map(function(foto) {
-                        var kleur = CATEGORY_COLORS[foto.category] || '#95A5A6';
+                        var kleur = getCatKleur(foto.category) || '#95A5A6';
                         return (
                             <div
                                 key={foto.id}
                                 className="fa-card"
                                 onClick={function() { setLightbox({ foto: foto, showEdited: true }); }}
                             >
-                                {/* Thumbnail */}
                                 <div className="fa-card-img-wrap">
                                     <img
                                         src={foto.edited_url || foto.original_url}
@@ -254,15 +386,10 @@ export default function FotoArchief() {
                                         className="fa-card-img"
                                         loading="lazy"
                                     />
-                                    {/* Category badge */}
-                                    <span
-                                        className="fa-cat-badge"
-                                        style={{ background: kleur }}
-                                    >
-                                        <i className={'fa-solid ' + CATEGORY_ICONS[foto.category]}></i>
+                                    <span className="fa-cat-badge" style={{ background: kleur }}>
+                                        <i className={'fa-solid ' + getCatIcon(foto.category)}></i>
                                         {foto.category}
                                     </span>
-                                    {/* Delete button */}
                                     <button
                                         className="fa-card-delete"
                                         title="Verwijderen"
@@ -271,7 +398,6 @@ export default function FotoArchief() {
                                         <i className="fa-solid fa-trash"></i>
                                     </button>
                                 </div>
-                                {/* Tags */}
                                 {foto.ai_tags && foto.ai_tags.length > 0 && (
                                     <div className="fa-card-tags">
                                         {foto.ai_tags.slice(0, 3).map(function(tag, i) {
@@ -289,14 +415,10 @@ export default function FotoArchief() {
             {lightbox && (
                 <div className="fa-lightbox" onClick={function() { setLightbox(null); }}>
                     <div className="fa-lightbox-inner" onClick={function(e) { e.stopPropagation(); }}>
-                        {/* Header */}
                         <div className="fa-lb-header">
                             <div className="fa-lb-meta">
-                                <span
-                                    className="fa-lb-cat"
-                                    style={{ color: CATEGORY_COLORS[lightbox.foto.category] }}
-                                >
-                                    <i className={'fa-solid ' + CATEGORY_ICONS[lightbox.foto.category]}></i>
+                                <span className="fa-lb-cat" style={{ color: getCatKleur(lightbox.foto.category) }}>
+                                    <i className={'fa-solid ' + getCatIcon(lightbox.foto.category)}></i>
                                     {lightbox.foto.category}
                                 </span>
                                 <span className="fa-lb-date">
@@ -306,7 +428,6 @@ export default function FotoArchief() {
                                 </span>
                             </div>
                             <div className="fa-lb-actions">
-                                {/* Origineel / Bewerkt toggle */}
                                 {lightbox.foto.edited_url && lightbox.foto.edited_url !== lightbox.foto.original_url && (
                                     <button
                                         className="fa-lb-toggle"
@@ -335,9 +456,7 @@ export default function FotoArchief() {
                             </div>
                         </div>
 
-                        {/* Afbeelding */}
                         <div className="fa-lb-img-wrap">
-                            {/* Pijl links */}
                             {fotos.findIndex(function(f) { return f.id === lightbox.foto.id; }) > 0 && (
                                 <button
                                     className="fa-lb-nav fa-lb-nav--prev"
@@ -356,7 +475,6 @@ export default function FotoArchief() {
                                 alt={lightbox.foto.ai_description || ''}
                                 className="fa-lb-img"
                             />
-                            {/* Pijl rechts */}
                             {fotos.findIndex(function(f) { return f.id === lightbox.foto.id; }) < fotos.length - 1 && (
                                 <button
                                     className="fa-lb-nav fa-lb-nav--next"
@@ -370,7 +488,6 @@ export default function FotoArchief() {
                             )}
                         </div>
 
-                        {/* Beschrijving en tags */}
                         <div className="fa-lb-footer">
                             {lightbox.foto.ai_description && (
                                 <p className="fa-lb-desc">{lightbox.foto.ai_description}</p>
@@ -382,6 +499,117 @@ export default function FotoArchief() {
                                     })}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Categorie beheer modal */}
+            {showCatModal && (
+                <div className="fa-lightbox" onClick={function() { setShowCatModal(false); }}>
+                    <div className="fa-cat-modal" onClick={function(e) { e.stopPropagation(); }}>
+                        <div className="fa-lb-header">
+                            <h2><i className="fa-solid fa-tags"></i> Categorieën beheren</h2>
+                            <button className="fa-lb-close" onClick={function() { setShowCatModal(false); }}>
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        {/* Vaste categorieën */}
+                        <div className="fa-cat-section">
+                            <h3>Standaard</h3>
+                            <div className="fa-cat-list">
+                                {DEFAULT_CATEGORIES.map(function(cat) {
+                                    return (
+                                        <div key={cat} className="fa-cat-row">
+                                            <span style={{ color: DEFAULT_COLORS[cat] }}>
+                                                <i className={'fa-solid ' + DEFAULT_ICONS[cat]}></i>
+                                            </span>
+                                            <span className="fa-cat-naam">{cat}</span>
+                                            <span className="fa-cat-fixed">vast</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Custom categorieën */}
+                        {customCategories.length > 0 && (
+                            <div className="fa-cat-section">
+                                <h3>Eigen categorieën</h3>
+                                <div className="fa-cat-list">
+                                    {customCategories.map(function(cat) {
+                                        return (
+                                            <div key={cat.naam} className="fa-cat-row">
+                                                <span style={{ color: cat.kleur }}>
+                                                    <i className={'fa-solid ' + cat.icon}></i>
+                                                </span>
+                                                <span className="fa-cat-naam">{cat.naam}</span>
+                                                <button
+                                                    className="fa-cat-delete-btn"
+                                                    onClick={function() { verwijderCat(cat.naam); }}
+                                                    title={'Categorie ' + cat.naam + ' verwijderen'}
+                                                >
+                                                    <i className="fa-solid fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Nieuwe categorie toevoegen */}
+                        <div className="fa-cat-section">
+                            <h3>Nieuwe categorie</h3>
+                            <div className="fa-cat-add-form">
+                                <input
+                                    type="text"
+                                    className="fa-cat-input"
+                                    placeholder="Naam (bijv. Workshops)"
+                                    value={newCatNaam}
+                                    onChange={function(e) { setNewCatNaam(e.target.value); }}
+                                    onKeyDown={function(e) { if (e.key === 'Enter') voegCatToe(); }}
+                                    maxLength={20}
+                                />
+                                <div className="fa-cat-kleur-row">
+                                    <span>Kleur:</span>
+                                    {PALETTE.map(function(kleur) {
+                                        return (
+                                            <button
+                                                key={kleur}
+                                                className={'fa-kleur-dot' + (newCatKleur === kleur ? ' fa-kleur-dot--actief' : '')}
+                                                style={{ background: kleur }}
+                                                onClick={function() { setNewCatKleur(kleur); }}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                                <div className="fa-cat-icon-row">
+                                    <span>Icoon:</span>
+                                    {ICON_OPTIES.map(function(icon) {
+                                        return (
+                                            <button
+                                                key={icon}
+                                                className={'fa-icon-opt' + (newCatIcon === icon ? ' fa-icon-opt--actief' : '')}
+                                                style={newCatIcon === icon ? { color: newCatKleur } : {}}
+                                                onClick={function() { setNewCatIcon(icon); }}
+                                                title={icon}
+                                            >
+                                                <i className={'fa-solid ' + icon}></i>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <button
+                                    className="fa-upload-btn"
+                                    onClick={voegCatToe}
+                                    disabled={!newCatNaam.trim() || alleTabs.includes(newCatNaam.trim())}
+                                >
+                                    <i className="fa-solid fa-plus"></i>
+                                    <span>Toevoegen</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

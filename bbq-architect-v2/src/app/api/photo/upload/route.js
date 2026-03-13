@@ -79,12 +79,29 @@ async function uploadToCloudinary(buffer, mimeType, applyEdits) {
 }
 
 // ── Claude Vision categorisatie ────────────────────────────────────────────
-async function categoriseerMetClaude(imageBuffer, mimeType) {
+async function categoriseerMetClaude(imageBuffer, mimeType, extraCategories) {
     if (!process.env.ANTHROPIC_API_KEY) {
         return { category: 'Admin', tags: [], description: 'Geen AI-sleutel geconfigureerd.' };
     }
 
     var base64 = Buffer.from(imageBuffer).toString('base64');
+
+    var baseCategories = [
+        { naam: 'Food',  omschrijving: 'BBQ-gerechten, vlees, sauzen, borden, presentatie' },
+        { naam: 'Gear',  omschrijving: 'Smokers, Yoder, Flat Top, truss, apparatuur, opbouw' },
+        { naam: 'Sfeer', omschrijving: 'Fair-opstelling, mensen, gasten, locatie, team, evenement' },
+        { naam: 'Admin', omschrijving: 'Documenten, offertes, facturen, labels, kantoor' },
+    ];
+
+    // Voeg extra (gebruiker-gedefinieerde) categorieën toe
+    var alleCategorieen = baseCategories.concat(
+        (extraCategories || [])
+            .filter(function(c) { return !baseCategories.find(function(b) { return b.naam === c; }); })
+            .map(function(c) { return { naam: c, omschrijving: 'Gebruikerscategorie' }; })
+    );
+
+    var catNamen = alleCategorieen.map(function(c) { return c.naam; }).join('|');
+    var catLijst = alleCategorieen.map(function(c) { return '- ' + c.naam + ' → ' + c.omschrijving; }).join('\n');
 
     var response = await anthropic.messages.create({
         model: 'claude-3-5-sonnet-20241022',
@@ -105,16 +122,13 @@ async function categoriseerMetClaude(imageBuffer, mimeType) {
                     text: `Jij bent de visuele archivaris van Hop & Bites BBQ Catering.
 Analyseer de afbeelding en geef een JSON-object terug met exact deze structuur:
 {
-  "category": "<Food|Gear|Sfeer|Admin>",
+  "category": "<${catNamen}>",
   "tags": ["<tag1>", "<tag2>", "<tag3>"],
   "description": "<1 zin Nederlandse beschrijving>"
 }
 
 Categorieën:
-- Food   → BBQ-gerechten, vlees, sauzen, borden, presentatie
-- Gear   → Smokers, Yoder, Flat Top, truss, apparatuur, opbouw
-- Sfeer  → Fair-opstelling, mensen, gasten, locatie, team, evenement
-- Admin  → Documenten, offertes, facturen, labels, kantoor
+${catLijst}
 
 Geef ALLEEN het JSON-object, geen uitleg.`,
                 },
@@ -126,7 +140,7 @@ Geef ALLEEN het JSON-object, geen uitleg.`,
     try {
         var jsonMatch = text.match(/\{[\s\S]*\}/);
         var parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-        var validCategories = ['Food', 'Gear', 'Sfeer', 'Admin'];
+        var validCategories = alleCategorieen.map(function(c) { return c.naam; });
         return {
             category: validCategories.includes(parsed.category) ? parsed.category : 'Admin',
             tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 10) : [],
@@ -144,6 +158,8 @@ export async function POST(request) {
         var file = formData.get('photo');
         var eventId = formData.get('event_id') || null;
         var applyEdits = formData.get('auto_edit') !== 'false'; // standaard aan
+        var categoriesRaw = formData.get('categories') || '';
+        var extraCategories = categoriesRaw ? categoriesRaw.split(',').map(function(c) { return c.trim(); }).filter(Boolean) : [];
 
         if (!file || typeof file === 'string') {
             return Response.json({ error: 'Geen foto ontvangen (veld: photo)' }, { status: 400 });
@@ -176,7 +192,7 @@ export async function POST(request) {
                 console.warn('[photo-upload] Cloudinary fout (niet fataal):', e.message);
                 return null;
             }),
-            categoriseerMetClaude(buffer, mimeType).catch(function(e) {
+            categoriseerMetClaude(buffer, mimeType, extraCategories).catch(function(e) {
                 console.warn('[photo-upload] Claude Vision fout (niet fataal):', e.message);
                 return { category: 'Admin', tags: [], description: '' };
             }),
