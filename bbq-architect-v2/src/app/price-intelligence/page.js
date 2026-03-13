@@ -17,8 +17,62 @@ export default function PriceIntelligence() {
     var [importResult, setImportResult] = useState(null);
     var [sortBy, setSortBy] = useState('name'); // 'name' | 'price' | 'change'
     var [view, setView] = useState('vergelijk'); // 'vergelijk' | 'alle'
+    var [pushStatus, setPushStatus] = useState('unknown'); // 'unknown'|'granted'|'denied'|'loading'
     var fileRef = useRef();
     var showToast = useToast();
+
+    // Controleer huidige notificatie-status
+    useEffect(function () {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+            setPushStatus(Notification.permission === 'granted' ? 'granted' : Notification.permission === 'denied' ? 'denied' : 'default');
+        }
+    }, []);
+
+    async function enablePushNotifications() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            showToast('Push notificaties worden niet ondersteund door deze browser', 'error');
+            return;
+        }
+        setPushStatus('loading');
+        try {
+            var permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                setPushStatus('denied');
+                showToast('Notificaties geweigerd — wijzig dit in je browserinstellingen', 'error');
+                return;
+            }
+            var reg = await navigator.serviceWorker.ready;
+            var vapidKey = window.__VAPID_PUBLIC_KEY__;
+            if (!vapidKey) {
+                showToast('VAPID_PUBLIC_KEY niet geconfigureerd — zie .env.local', 'error');
+                setPushStatus('default');
+                return;
+            }
+            var sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(vapidKey),
+            });
+            await fetch('/api/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscription: sub.toJSON(), userAgent: navigator.userAgent }),
+            });
+            setPushStatus('granted');
+            showToast('Notificaties ingeschakeld voor prijswijzigingen > 5%', 'success');
+        } catch (err) {
+            setPushStatus('default');
+            showToast('Fout: ' + err.message, 'error');
+        }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var rawData = window.atob(base64);
+        var outputArray = new Uint8Array(rawData.length);
+        for (var i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
+        return outputArray;
+    }
 
     function fetchPrices() {
         if (!supabase) { setLoading(false); return; }
@@ -146,6 +200,44 @@ export default function PriceIntelligence() {
                     <div className="pi-stat-label"><i className="fa-solid fa-arrow-trend-down"></i> Prijsdalingen</div>
                 </div>
             </div>
+
+            {/* ---- Notificaties banner ---- */}
+            {pushStatus !== 'granted' && pushStatus !== 'denied' && (
+                <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(167,139,250,.1)', border: '1px solid rgba(167,139,250,.3)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--purple)' }}>
+                            <i className="fa-solid fa-bell" style={{ marginRight: 6 }}></i>
+                            Prijswijzigingen op je Xiaomi ontvangen?
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+                            Schakel meldingen in — je krijgt een notificatie bij &gt;5% prijsverandering op actieve ingrediënten.
+                        </div>
+                    </div>
+                    <button
+                        className="btn btn-brand btn-sm"
+                        onClick={enablePushNotifications}
+                        disabled={pushStatus === 'loading'}
+                        style={{ flexShrink: 0 }}
+                    >
+                        {pushStatus === 'loading'
+                            ? <><i className="fa-solid fa-spinner fa-spin"></i> Bezig...</>
+                            : <><i className="fa-solid fa-bell"></i> Inschakelen</>}
+                    </button>
+                </div>
+            )}
+            {pushStatus === 'granted' && (
+                <div style={{ marginBottom: 16, padding: '10px 18px', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 12, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <i className="fa-solid fa-bell" style={{ color: 'var(--green)' }}></i>
+                    <span style={{ color: 'var(--green)', fontWeight: 600 }}>Notificaties actief</span>
+                    <span style={{ color: 'var(--muted)' }}>— je ontvangt meldingen bij prijswijzigingen &gt;5% op je actieve ingrediënten.</span>
+                </div>
+            )}
+            {pushStatus === 'denied' && (
+                <div style={{ marginBottom: 16, padding: '10px 18px', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, fontSize: 12, color: 'var(--muted)' }}>
+                    <i className="fa-solid fa-bell-slash" style={{ color: 'var(--red)', marginRight: 6 }}></i>
+                    Notificaties geblokkeerd. Sta ze toe via <b>Browserinstellingen → Sitemachtigingen → Meldingen</b>.
+                </div>
+            )}
 
             {/* ---- Hoofdgrid: Import + Recente wijzigingen ---- */}
             <div className="pi-top-row">
