@@ -20,6 +20,7 @@ var NAV_ITEMS = [
     { id: '/uren', label: 'Uren', icon: 'fa-clock' },
     { id: '/materieel', label: 'Materieel', icon: 'fa-wrench' },
     { id: '/boekhouding', label: 'Boekhouding', icon: 'fa-chart-line' },
+    { id: '/foto-archief', label: 'Foto Archief', icon: 'fa-images' },
     { id: '/instellingen', label: 'Instellingen', icon: 'fa-gear' },
 ];
 
