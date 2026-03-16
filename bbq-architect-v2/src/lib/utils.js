@@ -53,3 +53,11 @@ export var DAGEN = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
 export function genNummer(prefix, nr) {
     return prefix + String(nr).padStart(3, '0');
 }
+
+// Safe JSON parse — returns fallback (default []) on failure
+export function safeJsonParse(str, fallback) {
+    if (fallback === undefined) fallback = [];
+    if (str == null) return fallback;
+    if (typeof str !== 'string') return str;
+    try { return JSON.parse(str); } catch (e) { return fallback; }
+}

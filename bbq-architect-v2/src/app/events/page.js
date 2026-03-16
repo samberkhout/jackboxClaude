@@ -103,7 +103,7 @@ export default function Events() {
                         var deductAmount = qty * unitFactor;
                         var newStock = Math.max(0, (match.current_stock || 0) - deductAmount);
                         console.log('[DRAIN] Deducting:', deductAmount.toFixed(2), match.unit, 'New stock:', newStock.toFixed(2));
-                        supabase.from('inventory').update({ current_stock: newStock }).eq('id', match.id).then(function () { });
+                        supabase.from('inventory').update({ current_stock: newStock }).eq('id', match.id).then(function () { }).catch(function (e) { console.warn('[DRAIN] Voorraad update mislukt:', e.message); });
                         match.current_stock = newStock;
                         deducted.push(match.naam + ' -' + deductAmount.toFixed(1) + match.unit);
                         // Auto-generate prep suggestion if below par-level
@@ -118,7 +118,7 @@ export default function Events() {
                                 unit: match.unit,
                                 scheduled_at: prepMonday.toISOString(),
                                 status: 'pending'
-                            }).then(function () { });
+                            }).then(function () { }).catch(function (e) { console.warn('[DRAIN] Prep suggestion mislukt:', e.message); });
                         }
                     }
                 });

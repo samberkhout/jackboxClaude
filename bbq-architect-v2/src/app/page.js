@@ -1,6 +1,6 @@
 'use client';
 import { useSupabase } from '@/lib/useSupabase';
-import { fmt, fmtNl } from '@/lib/utils';
+import { fmt, fmtNl, safeJsonParse } from '@/lib/utils';
 import Link from 'next/link';
 
 export default function Dashboard() {
@@ -275,7 +275,7 @@ export default function Dashboard() {
           </div>
 
           {prepEvents.map(function (offerte) {
-            var menuSel = typeof offerte.menu_selectie === 'string' ? JSON.parse(offerte.menu_selectie) : offerte.menu_selectie;
+            var menuSel = safeJsonParse(offerte.menu_selectie, offerte.menu_selectie || []);
             var aantalNormaal = (offerte.aantal_gasten || 0) - (offerte.aantal_vega || 0);
             var aantalVega = offerte.aantal_vega || 0;
 

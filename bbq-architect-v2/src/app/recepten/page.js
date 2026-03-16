@@ -22,7 +22,7 @@ export default function Recepten() {
         if (!supabase) return;
         supabase.from('supplier_prices').select('*').then(function (res) {
             if (res.data) setSupplierPrices(res.data);
-        });
+        }).catch(function (e) { console.warn('[recepten] Leverancierssprijzen laden mislukt:', e.message); });
     }, []);
 
     function newRecept() {
@@ -38,16 +38,16 @@ export default function Recepten() {
     function saveRecept() {
         if (!form.naam) { showToast('Vul een naam in', 'error'); return; }
         if (editing === 'new') {
-            insert(form).then(function () { showToast('Recept aangemaakt', 'success'); setEditing(null); setForm(null); });
+            insert(form).then(function () { showToast('Recept aangemaakt', 'success'); setEditing(null); setForm(null); }).catch(function (e) { showToast('Opslaan mislukt: ' + e.message, 'error'); });
         } else {
             var { id, created_at, ...rest } = form;
-            update(editing, rest).then(function () { showToast('Recept bijgewerkt', 'success'); setEditing(null); setForm(null); });
+            update(editing, rest).then(function () { showToast('Recept bijgewerkt', 'success'); setEditing(null); setForm(null); }).catch(function (e) { showToast('Bijwerken mislukt: ' + e.message, 'error'); });
         }
     }
 
     function deleteRecept() {
         showConfirm('Weet je zeker dat je dit recept wilt verwijderen?', function () {
-            remove(editing).then(function () { showToast('Recept verwijderd', 'success'); setEditing(null); setForm(null); });
+            remove(editing).then(function () { showToast('Recept verwijderd', 'success'); setEditing(null); setForm(null); }).catch(function (e) { showToast('Verwijderen mislukt: ' + e.message, 'error'); });
         });
     }
 
