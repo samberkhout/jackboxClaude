@@ -50,7 +50,7 @@ export default function RootLayout({ children }) {
                     if ('serviceWorker' in navigator) {
                         window.addEventListener('load', function() {
                             navigator.serviceWorker.register('/sw.js')
-                                .then(function(reg) { console.log('[SW] Geregistreerd:', reg.scope); })
+                                .then(function() { })
                                 .catch(function(err) { console.warn('[SW] Fout:', err); });
                         });
                     }

@@ -10,6 +10,7 @@ import MenuWizard from '@/components/MenuWizard';
 
 export default function Offertes() {
     var { data: offertes, insert, update, remove } = useSupabase('offertes', []);
+    var facturen = useSupabase('facturen', []);
     var { data: gerechtenData } = useSupabase('gerechten', []);
     var { data: inventoryData } = useSupabase('inventory', []);
     var { settings } = useSettings();
@@ -79,28 +80,13 @@ export default function Offertes() {
     // Always overwrites event data from offerte.
     // =====================================================
     function syncQuoteToEvent(quoteId, quoteData) {
-        console.log('[SYNC] ═══════════════════════════════════════');
-        console.log('[SYNC] syncQuoteToEvent v2 called');
-        console.log('[SYNC] Quote ID:', quoteId, '(type:', typeof quoteId + ')');
-        console.log('[SYNC] Quote status:', quoteData.status);
-        console.log('[SYNC] Quote client:', quoteData.client_naam);
-        console.log('[SYNC] Quote datum:', quoteData.datum);
+        if (!quoteId) return;
 
-        if (!quoteId) {
-            console.error('[SYNC] ❌ ABORT: No quote ID provided');
-            return;
-        }
-
-        // Normalize quoteId to integer
         var qid = parseInt(quoteId, 10);
-        if (isNaN(qid)) {
-            console.error('[SYNC] ❌ ABORT: Invalid quote ID:', quoteId);
-            return;
-        }
+        if (isNaN(qid)) return;
 
         var newStatus = quoteData.status;
 
-        // Calculate guests/ppp from offerte items
         var totalBedrag = 0;
         var estimatedGuests = 0;
         (quoteData.items || []).forEach(function (item) {
@@ -108,66 +94,51 @@ export default function Offertes() {
             if ((item.qty || 0) > estimatedGuests) estimatedGuests = item.qty || 0;
         });
         var ppp = estimatedGuests > 0 ? totalBedrag / estimatedGuests : 45;
-        console.log('[SYNC] Calculated: guests=' + estimatedGuests + ', ppp=€' + ppp.toFixed(2) + ', totaal=€' + totalBedrag.toFixed(2));
 
-        // Map offerte status → event status
         var eventStatus;
         if (newStatus === 'geaccepteerd' || newStatus === 'akkoord' || newStatus === 'betaald') {
             eventStatus = 'confirmed';
         } else if (newStatus === 'afgewezen' || newStatus === 'verlopen') {
             eventStatus = '__DELETE__';
         } else {
-            // concept, verzonden → optie
             eventStatus = 'optie';
         }
-        console.log('[SYNC] Status mapping:', newStatus, '→', eventStatus);
 
-        // Step 1: Check if event exists for this offerte
-        console.log('[SYNC] Step 1: Querying events WHERE offerte_id=' + qid);
         supabase.from('events').select('id, status, name').eq('offerte_id', qid)
             .then(function (res) {
                 if (res.error) {
-                    console.error('[SYNC] ❌ Step 1 FAILED:', res.error.message);
                     showToast('Sync fout: ' + res.error.message, 'error');
                     return;
                 }
 
                 var rows = res.data || [];
-                console.log('[SYNC] Step 1 result: ' + rows.length + ' event(s) found', JSON.stringify(rows));
 
-                // Clean up duplicates if any (defensive)
+                // Clean up duplicates (defensive)
                 if (rows.length > 1) {
-                    console.warn('[SYNC] ⚠ Multiple events found for offerte_id=' + qid + ', cleaning duplicates');
                     for (var i = 1; i < rows.length; i++) {
-                        supabase.from('events').delete().eq('id', rows[i].id).then(function () { });
+                        supabase.from('events').delete().eq('id', rows[i].id)
+                            .then(function () { })
+                            .catch(function (e) { console.error('[SYNC] Duplicate cleanup error:', e.message); });
                     }
                 }
 
                 var existing = rows.length > 0 ? rows[0] : null;
-                console.log('[SYNC] Step 2: Existing event?', existing ? 'YES (id=' + existing.id + ', status=' + existing.status + ')' : 'NO');
 
-                // === DELETE PATH ===
                 if (eventStatus === '__DELETE__') {
                     if (existing) {
-                        console.log('[SYNC] Step 3: DELETING event for afgewezen/verlopen offerte');
                         supabase.from('events').delete().eq('offerte_id', qid)
                             .then(function (d) {
                                 if (d.error) {
-                                    console.error('[SYNC] ❌ Delete failed:', d.error.message);
+                                    console.error('[SYNC] Delete error:', d.error.message);
                                 } else {
-                                    console.log('[SYNC] ✅ Event deleted successfully');
                                     showToast('🗑️ Optie verwijderd uit Agenda', 'info');
                                 }
                             })
-                            .catch(function (e) { console.error('[SYNC] Delete catch:', e); });
-                    } else {
-                        console.log('[SYNC] No event to delete — skip');
+                            .catch(function (e) { console.error('[SYNC] Delete error:', e.message); });
                     }
-                    console.log('[SYNC] ═══════════════════════════════════════');
                     return;
                 }
 
-                // === BUILD EVENT PAYLOAD (always overwrite) ===
                 var payload = {
                     name: 'Offerte: ' + (quoteData.client_naam || quoteData.nummer || 'Onbekend'),
                     date: quoteData.datum || new Date().toISOString().slice(0, 10),
@@ -179,48 +150,37 @@ export default function Offertes() {
                     status: eventStatus,
                     notitie: quoteData.notitie || ''
                 };
-                console.log('[SYNC] Step 3: Event payload:', JSON.stringify(payload));
 
                 if (existing) {
-                    // === UPDATE existing event ===
-                    console.log('[SYNC] Step 4: UPDATING event id=' + existing.id);
                     supabase.from('events').update(payload).eq('id', existing.id).select()
                         .then(function (u) {
                             if (u.error) {
-                                console.error('[SYNC] ❌ Update FAILED:', u.error.message, JSON.stringify(u.error));
                                 showToast('Sync fout bij update: ' + u.error.message, 'error');
                             } else {
-                                console.log('[SYNC] ✅ Event UPDATED successfully:', JSON.stringify(u.data));
                                 var msg = eventStatus === 'confirmed'
                                     ? '✅ Agenda gesynchroniseerd — Event bevestigd!'
                                     : '📅 Agenda gesynchroniseerd met Offerte';
                                 showToast(msg, 'success');
                             }
                         })
-                        .catch(function (e) { console.error('[SYNC] Update catch:', e); });
+                        .catch(function (e) { console.error('[SYNC] Update error:', e.message); });
                 } else {
-                    // === INSERT new event ===
                     payload.offerte_id = qid;
                     payload.type = 'Zakelijk';
-                    payload.menu = [];  // JSONB — must be array, NOT string
-                    console.log('[SYNC] Step 4: INSERTING new event');
-                    console.log('[SYNC] Full insert payload:', JSON.stringify(payload));
+                    payload.menu = [];
                     supabase.from('events').insert(payload).select()
                         .then(function (ins) {
                             if (ins.error) {
-                                console.error('[SYNC] ❌ Insert FAILED:', ins.error.message, JSON.stringify(ins.error));
                                 showToast('Sync fout bij insert: ' + ins.error.message, 'error');
                             } else {
-                                console.log('[SYNC] ✅ New event INSERTED:', JSON.stringify(ins.data));
                                 showToast('📅 Agenda gesynchroniseerd — Optie toegevoegd!', 'success');
                             }
                         })
-                        .catch(function (e) { console.error('[SYNC] Insert catch:', e); });
+                        .catch(function (e) { console.error('[SYNC] Insert error:', e.message); });
                 }
-                console.log('[SYNC] ═══════════════════════════════════════');
             })
             .catch(function (e) {
-                console.error('[SYNC] ❌ Step 1 CATCH:', e);
+                console.error('[SYNC] Events ophalen error:', e.message);
                 showToast('Sync fout: kon events niet ophalen', 'error');
             });
     }
@@ -230,65 +190,49 @@ export default function Offertes() {
     // =====================================================
     function saveOfferte() {
         if (!form.client_naam) { showToast('Vul een klantnaam in', 'error'); return; }
-        console.log('[SAVE] ═══════════════════════════════════════');
-        console.log('[SAVE] editing=', editing, 'status=', form.status);
 
         if (editing === 'new') {
-            console.log('[SAVE] Inserting new offerte...');
             insert(form).then(function (insertedRow) {
-                console.log('[SAVE] Insert returned:', JSON.stringify(insertedRow));
                 showToast('Offerte aangemaakt', 'success');
-
                 var newId = insertedRow && insertedRow.id ? insertedRow.id : null;
-                console.log('[SAVE] Extracted ID:', newId);
-
                 if (newId) {
                     syncQuoteToEvent(newId, form);
                 } else {
-                    console.log('[SAVE] No ID from insert — trying direct DB lookup');
-                    // Direct Supabase fallback — find by nummer
+                    // Fallback — zoek op nummer als insert geen id teruggeeft
                     supabase.from('offertes').select('id').eq('nummer', form.nummer).order('id', { ascending: false }).limit(1)
                         .then(function (lookup) {
-                            console.log('[SAVE] Lookup result:', JSON.stringify(lookup.data), 'error:', lookup.error);
                             if (lookup.data && lookup.data.length > 0) {
-                                console.log('[SAVE] Found offerte via lookup, id=' + lookup.data[0].id);
                                 syncQuoteToEvent(lookup.data[0].id, form);
                             } else {
-                                console.error('[SAVE] ❌ Could not find offerte ID — sync skipped');
+                                console.error('[SAVE] Kon offerte ID niet ophalen — sync overgeslagen');
                             }
                         })
-                        .catch(function (e) { console.error('[SAVE] Lookup catch:', e); });
+                        .catch(function (e) { console.error('[SAVE] Lookup error:', e.message); });
                 }
-
                 setEditing(null); setForm(null);
             }).catch(function (err) {
-                console.error('[SAVE] Insert error:', err);
                 showToast('Fout bij aanmaken: ' + (err.message || ''), 'error');
             });
         } else {
-            console.log('[SAVE] Updating offerte id=', editing);
             var { id, created_at, ...rest } = form;
             update(editing, rest).then(function () {
                 showToast('Offerte bijgewerkt', 'success');
-                console.log('[SAVE] Update done, calling syncQuoteToEvent with id=', editing);
                 syncQuoteToEvent(editing, form);
                 setEditing(null); setForm(null);
             }).catch(function (err) {
-                console.error('[SAVE] Update error:', err);
                 showToast('Fout bij opslaan: ' + (err.message || ''), 'error');
             });
         }
-        console.log('[SAVE] ═══════════════════════════════════════');
     }
 
     function deleteOfferte() {
         showConfirm('Weet je zeker dat je deze offerte wilt verwijderen?', function () {
-            console.log('[DELETE] Deleting offerte id=', editing, '— also removing linked event');
-            supabase.from('events').delete().eq('offerte_id', editing).then(function (res) {
-                if (res.error) console.error('[DELETE] Event delete error:', res.error);
-                else console.log('[DELETE] ✅ Linked event removed');
-            });
-            remove(editing).then(function () { showToast('Offerte verwijderd', 'success'); setEditing(null); setForm(null); });
+            supabase.from('events').delete().eq('offerte_id', editing)
+                .then(function () { })
+                .catch(function (e) { console.error('[DELETE] Event verwijderen mislukt:', e.message); });
+            remove(editing)
+                .then(function () { showToast('Offerte verwijderd', 'success'); setEditing(null); setForm(null); })
+                .catch(function (e) { showToast('Verwijderen mislukt: ' + e.message, 'error'); });
         });
     }
 
@@ -306,12 +250,14 @@ export default function Offertes() {
         };
         facturen.insert(factuurData).then(function () {
             var { id, created_at, ...rest } = Object.assign({}, form, { status: 'geaccepteerd' });
-            update(editing, rest).then(function () {
-                showToast('Factuur aangemaakt vanuit offerte', 'success');
-                syncQuoteToEvent(editing, Object.assign({}, form, { status: 'geaccepteerd' }));
-                setEditing(null); setForm(null);
-            });
-        });
+            update(editing, rest)
+                .then(function () {
+                    showToast('Factuur aangemaakt vanuit offerte', 'success');
+                    syncQuoteToEvent(editing, Object.assign({}, form, { status: 'geaccepteerd' }));
+                    setEditing(null); setForm(null);
+                })
+                .catch(function (e) { showToast('Offerte bijwerken mislukt: ' + e.message, 'error'); });
+        }).catch(function (e) { showToast('Factuur aanmaken mislukt: ' + e.message, 'error'); });
     }
 
     function addItem() { setField('items', (form.items || []).concat([{ desc: '', qty: 1, prijs: 0, btw: (settings && settings.default_btw) || 21 }])); }
