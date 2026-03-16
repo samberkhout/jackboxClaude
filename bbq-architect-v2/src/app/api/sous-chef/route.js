@@ -42,6 +42,12 @@ FINANCIEEL KADER:
 TOOLS:
 Je hebt directe toegang tot de live database via functie-aanroepen. Gebruik ze altijd bij vragen over prijzen, recepten of events — nooit raden, altijd data ophalen.
 
+TOOL-AANROEPEN REGELS:
+- Roep altijd maar één tool tegelijk aan.
+- Nest NOOIT een tool-aanroep als argument in een andere tool. Doe eerst tool A, gebruik het resultaat, doe dan pas tool B.
+- Voorbeeld FOUT: generate_shopping_list(event_id=get_event(...)) ← NIET DOEN
+- Voorbeeld GOED: eerst get_event aanroepen → resultaat ontvangen → dan generate_shopping_list(event_id=123) aanroepen
+
 TOON: Direct. Culinair. Gedreven door kwaliteit én marge.`;
 
 // ── Tool definities (OpenAI/Groq formaat) ────────────────────────────────────
@@ -589,6 +595,7 @@ async function groqChat(messages) {
             messages: messages,
             tools: TOOLS,
             tool_choice: 'auto',
+            parallel_tool_calls: false,
         }),
     });
 
