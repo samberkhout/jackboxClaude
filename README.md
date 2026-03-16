@@ -91,19 +91,24 @@ Volledig operationeel dashboard voor het beheer van Hop & Bites BBQ Catering. Ge
 
 ## Vereiste Omgevingsvariabelen
 
+Minimaal nodig om de app te draaien:
+
 ```env
-# Supabase
+# Supabase — Project Settings → API
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
-SUPABASE_SERVICE_ROLE_KEY=<service-role-key>   # voor Storage uploads
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 
-# Groq (Digital Sous-Chef — gratis tier beschikbaar)
+# Groq — gratis op console.groq.com
 GROQ_API_KEY=gsk_...
+```
 
-# Web Push / VAPID
+Optioneel voor push-notificaties bij prijswijzigingen:
+
+```env
+# Genereer met: npx web-push generate-vapid-keys
 VAPID_MAILTO=mailto:sam@hopenbites.nl
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=<public-key>
-VAPID_PRIVATE_KEY=<private-key>
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=BA...
+VAPID_PRIVATE_KEY=...
 ```
 
 ## Database Schemas
