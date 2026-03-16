@@ -3996,6 +3996,85 @@ body {
   border: 1px solid rgba(34, 197, 94, .2);
 }
 
+/* ── Sous-Chef confirm card ───────────────────────────────────────────────── */
+.sc-confirm-card {
+  align-self: stretch;
+  background: rgba(255,191,0,.07);
+  border: 1px solid rgba(255,191,0,.3);
+  border-left: 3px solid var(--brand);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+.sc-confirm-icon {
+  color: var(--brand);
+  font-size: 14px;
+  margin-top: 2px;
+}
+.sc-confirm-body { flex: 1; min-width: 0; }
+.sc-confirm-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.sc-confirm-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sc-confirm-btns {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+.sc-confirm-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--brand);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.sc-confirm-accept:hover { opacity: .85; }
+.sc-confirm-accept:disabled { opacity: .5; cursor: not-allowed; }
+.sc-confirm-reject {
+  background: rgba(255,255,255,.07);
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.sc-confirm-reject:hover { background: rgba(255,255,255,.12); }
+.sc-confirm-reject:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Resultaat na accepteren/annuleren */
+.sc-confirm-result {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.sc-confirm-result--ok     { background: rgba(34,197,94,.1);  color: var(--green); border: 1px solid rgba(34,197,94,.2); }
+.sc-confirm-result--err    { background: rgba(239,68,68,.1);  color: #ef4444;      border: 1px solid rgba(239,68,68,.2); }
+.sc-confirm-result--cancel { background: rgba(148,163,184,.1); color: var(--text-muted); border: 1px solid rgba(148,163,184,.15); }
+
 .sc-actions-wrap {
   border-top: 1px solid rgba(255, 255, 255, .04);
   padding: 10px 14px 8px;

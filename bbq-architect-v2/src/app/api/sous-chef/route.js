@@ -141,6 +141,98 @@ var TOOLS = [
     {
         type: 'function',
         function: {
+            name: 'view_photos',
+            description: 'Bekijk foto\'s uit het foto-archief, optioneel gefilterd op categorie.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    categorie: { type: 'string', description: 'Filter op categorie: Food, Gear, Sfeer, Admin (optioneel)' },
+                    limit: { type: 'number', description: 'Aantal foto\'s (standaard 10, max 50)' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'propose_recipe_change',
+            description: 'Stel voor om een recept aan te maken of bij te werken. De gebruiker moet dit bevestigen voor opslaan.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id: { type: 'number', description: 'Recept-ID voor update (weglaten voor nieuw recept)' },
+                    naam: { type: 'string', description: 'Naam van het recept' },
+                    categorie: { type: 'string', description: 'Categorie (bijv. Vlees, Vis, Vega)' },
+                    porties: { type: 'number', description: 'Aantal porties' },
+                    preptime: { type: 'string', description: 'Bereidingstijd (bijv. "2 uur")' },
+                    instructies: { type: 'string', description: 'Bereidingswijze' },
+                    ingredienten: { type: 'array', items: { type: 'object' }, description: 'Array van {naam, hoeveelheid, eenheid}' },
+                },
+                required: ['naam'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'propose_event_change',
+            description: 'Stel voor om een event aan te maken of bij te werken. De gebruiker moet dit bevestigen voor opslaan.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id: { type: 'number', description: 'Event-ID voor update (weglaten voor nieuw event)' },
+                    name: { type: 'string', description: 'Naam van het event' },
+                    date: { type: 'string', description: 'Datum (YYYY-MM-DD)' },
+                    guests: { type: 'number', description: 'Aantal gasten' },
+                    location: { type: 'string', description: 'Locatie' },
+                    status: { type: 'string', description: 'Status: concept | bevestigd | afgerond' },
+                    notes: { type: 'string', description: 'Extra notities' },
+                },
+                required: ['name'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'propose_price_update',
+            description: 'Stel voor om een inkoopprijs bij te werken in de database. De gebruiker moet dit bevestigen voor opslaan.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    product_naam: { type: 'string', description: 'Naam van het product' },
+                    leverancier: { type: 'string', description: 'Leverancier: Sligro, Hanos of Bidfood' },
+                    nieuwe_prijs: { type: 'number', description: 'Nieuwe prijs per eenheid in euro' },
+                    eenheid: { type: 'string', description: 'Eenheid (kg, liter, stuk, etc.)' },
+                },
+                required: ['product_naam', 'leverancier', 'nieuwe_prijs'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_quote',
+            description: 'Genereer een offerte op basis van event- en menugegevens. Stel opslaan in de database voor na generatie.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    event_id: { type: 'number', description: 'Event-ID (optioneel)' },
+                    event_naam: { type: 'string', description: 'Naam van het event' },
+                    klant_naam: { type: 'string', description: 'Naam van de klant' },
+                    datum: { type: 'string', description: 'Datum van het event (YYYY-MM-DD)' },
+                    gasten: { type: 'number', description: 'Aantal gasten' },
+                    menu_items: { type: 'array', items: { type: 'string' }, description: 'Lijst van menu-items' },
+                    prijs_per_persoon: { type: 'number', description: 'Prijs per persoon (standaard 38.50)' },
+                    notities: { type: 'string', description: 'Extra notities of wensen' },
+                },
+                required: ['klant_naam', 'gasten'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'check_price_changes',
             description: 'Controleer recente prijswijzigingen bij leveranciers (stijgingen en dalingen). Gebruik dit voor proactieve alerts.',
             parameters: {
@@ -411,9 +503,69 @@ async function executeTool(name, input) {
             };
         }
 
+        case 'view_photos': {
+            var limit = Math.min(input.limit || 10, 50);
+            var q = supabase.from('photo_logbook').select('id, original_url, edited_url, category, ai_tags, ai_description, uploaded_at').order('uploaded_at', { ascending: false }).limit(limit);
+            if (input.categorie) q = q.eq('category', input.categorie);
+            var { data: fotos } = await q;
+            return {
+                fotos: (fotos || []).map(function(f) {
+                    return { id: f.id, url: f.edited_url || f.original_url, categorie: f.category, tags: f.ai_tags, beschrijving: f.ai_description, datum: f.uploaded_at };
+                }),
+                totaal: (fotos || []).length,
+            };
+        }
+
+        case 'propose_recipe_change': {
+            var isUpdate = !!input.id;
+            var label = (isUpdate ? 'Recept bijwerken: ' : 'Nieuw recept aanmaken: ') + (input.naam || '?');
+            return proposal('upsert_recipe', label, input);
+        }
+
+        case 'propose_event_change': {
+            var isUpdate = !!input.id;
+            var label = (isUpdate ? 'Event bijwerken: ' : 'Nieuw event aanmaken: ') + (input.name || '?') + (input.date ? ' (' + input.date + ')' : '');
+            return proposal('upsert_event', label, input);
+        }
+
+        case 'propose_price_update': {
+            var label = 'Prijs bijwerken: ' + input.product_naam + ' bij ' + input.leverancier + ' → €' + Number(input.nieuwe_prijs).toFixed(2);
+            return proposal('update_price', label, input);
+        }
+
+        case 'generate_quote': {
+            var gasten = input.gasten || 0;
+            var ppp = input.prijs_per_persoon || 38.50;
+            var totaalExcl = gasten * ppp;
+            var btw = totaalExcl * 0.09; // 9% BTW horeca
+            var totaalIncl = totaalExcl + btw;
+            var menuTekst = (input.menu_items || []).join(', ') || 'Nader te bepalen';
+            var datum = input.datum || 'Nader te bepalen';
+            var quoteData = {
+                klant_naam:    input.klant_naam,
+                event_naam:    input.event_naam || input.klant_naam + ' BBQ',
+                datum:         datum,
+                gasten:        gasten,
+                menu:          input.menu_items || [],
+                prijs_per_persoon: ppp,
+                totaal_excl:   totaalExcl,
+                btw:           btw,
+                totaal_incl:   totaalIncl,
+                notities:      input.notities || '',
+                status:        'concept',
+            };
+            var label = 'Offerte opslaan: ' + quoteData.event_naam + ' — €' + totaalIncl.toFixed(2) + ' incl. BTW';
+            return proposal('save_quote', label, quoteData);
+        }
+
         default:
             return { error: 'Onbekende tool: ' + name };
     }
+}
+
+// ── Hulpfunctie voor proposals (DB-schrijfacties die bevestiging vereisen) ───
+function proposal(action, label, data) {
+    return { __proposal: true, action: action, label: label, data: data };
 }
 
 // ── SSE helper ────────────────────────────────────────────────────────────────
@@ -471,13 +623,13 @@ export async function POST(request) {
                 ];
 
                 var MAX_ITERATIONS = 6;
-                for (var i = 0; i < MAX_ITERATIONS; i++) {
+                var done = false;
+                for (var i = 0; i < MAX_ITERATIONS && !done; i++) {
                     var response = await groqChat(currentMessages);
                     var choice = response.choices[0];
                     var msg = choice.message;
 
                     if (choice.finish_reason === 'tool_calls') {
-                        // Voeg assistant bericht met tool_calls toe aan history
                         currentMessages.push(msg);
 
                         for (var tc of msg.tool_calls) {
@@ -489,25 +641,38 @@ export async function POST(request) {
                             var result = await executeTool(toolName, toolInput);
                             send({ type: 'tool_done', tool: toolName });
 
-                            // Tool result terug als 'tool' rol bericht
+                            // Proposal: stuur confirm-event naar client en stop
+                            if (result && result.__proposal) {
+                                send({
+                                    type: 'confirm',
+                                    action_id: Date.now().toString(36),
+                                    label: result.label,
+                                    action: result.action,
+                                    payload: result.data,
+                                });
+                                send({ type: 'done' });
+                                done = true;
+                                break;
+                            }
+
                             currentMessages.push({
                                 role: 'tool',
                                 tool_call_id: tc.id,
                                 content: JSON.stringify(result),
                             });
                         }
-                        continue;
+                        if (!done) continue;
+                    } else {
+                        // Klaar — stream tekst in chunks voor realtime gevoel
+                        var fullText = msg.content || '';
+                        var chunkSize = 60;
+                        for (var ci = 0; ci < fullText.length; ci += chunkSize) {
+                            send({ type: 'text', delta: fullText.slice(ci, ci + chunkSize) });
+                            await new Promise(function(r) { setTimeout(r, 15); });
+                        }
+                        send({ type: 'done' });
+                        done = true;
                     }
-
-                    // Klaar — stream tekst in chunks voor realtime gevoel
-                    var fullText = msg.content || '';
-                    var chunkSize = 60;
-                    for (var ci = 0; ci < fullText.length; ci += chunkSize) {
-                        send({ type: 'text', delta: fullText.slice(ci, ci + chunkSize) });
-                        await new Promise(function(r) { setTimeout(r, 15); });
-                    }
-                    send({ type: 'done' });
-                    break;
                 }
 
             } catch (err) {

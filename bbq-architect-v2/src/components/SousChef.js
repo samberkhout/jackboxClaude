@@ -39,22 +39,39 @@ var QUICK_ACTIONS = [
         color: 'var(--blue)',
         prompt: 'Analyseer de marges voor alle recepten op basis van de actuele inkoopprijzen. Welk recept heeft de beste marge?',
     },
+    {
+        label: "Foto's bekijken",
+        icon: 'fa-images',
+        color: 'var(--pink, #e91e8c)',
+        prompt: "Toon de laatste 10 foto's uit het archief en geef een overzicht per categorie.",
+    },
+    {
+        label: 'Offerte maken',
+        icon: 'fa-file-invoice',
+        color: 'var(--orange, #ff7043)',
+        prompt: 'Maak een offerte voor een nieuw event. Vraag me naar de klantgegevens, datum, aantal gasten en gewenst menu.',
+    },
 ];
 
 var TOOL_LABELS = {
-    get_supplier_prices: 'Leveranciersprijs ophalen',
-    get_recipe: 'Recept opzoeken',
-    get_event: 'Event ophalen',
-    calculate_foodcost: 'Foodcost berekenen',
-    generate_shopping_list: 'Inkooplijst genereren',
-    suggest_vegan_alternatives: 'Vega-alternatieven zoeken',
-    check_price_changes: 'Prijswijzigingen controleren',
+    get_supplier_prices:       'Leveranciersprijs ophalen',
+    get_recipe:                'Recept opzoeken',
+    get_event:                 'Event ophalen',
+    calculate_foodcost:        'Foodcost berekenen',
+    generate_shopping_list:    'Inkooplijst genereren',
+    suggest_vegan_alternatives:'Vega-alternatieven zoeken',
+    check_price_changes:       'Prijswijzigingen controleren',
+    view_photos:               "Foto's ophalen",
+    propose_recipe_change:     'Recept voorbereiden',
+    propose_event_change:      'Event voorbereiden',
+    propose_price_update:      'Prijswijziging voorbereiden',
+    generate_quote:            'Offerte berekenen',
 };
 
 var WELCOME_MSG = {
     role: 'assistant',
     type: 'text',
-    content: 'Goedemiddag! Ik ben je **Digital Sous-Chef**. Ik heb live toegang tot je leveranciersprijs, recepten en events.\n\nVraag me naar:\n• Goedkoopste leverancier voor een product\n• Foodcost-berekening van een recept\n• Inkooplijst voor je volgende event\n• Vega-alternatieven voor je menu',
+    content: 'Goedemiddag! Ik ben je **Digital Sous-Chef**. Ik heb live toegang tot je database en kan recepten, events en prijzen beheren.\n\nVraag me naar:\n• Goedkoopste leverancier voor een product\n• Foodcost-berekening of inkooplijst\n• Recept of event aanmaken/bewerken\n• Offerte genereren voor een klant\n• Foto\'s uit het archief bekijken\n\nWijzigingen in de database vraag ik altijd eerst te bevestigen.',
 };
 
 // ── Markdown formatter ────────────────────────────────────────────────────────
@@ -89,9 +106,57 @@ export default function SousChef() {
     var [loading, setLoading] = useState(false);
     var [showActions, setShowActions] = useState(true);
     var [size, setSize] = useState('normal'); // 'normal' | 'large'
+    var [executingId, setExecutingId] = useState(null); // action_id dat bezig is
     var messagesEndRef = useRef();
     var inputRef = useRef();
     var abortRef = useRef(null);
+
+    // Voer een bevestigde actie uit via het execute-endpoint
+    var executeConfirm = useCallback(async function(action_id, action, payload) {
+        setExecutingId(action_id);
+        try {
+            var res = await fetch('/api/sous-chef/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action, payload: payload }),
+            });
+            var data = await res.json();
+            setMessages(function(prev) {
+                return prev.map(function(m) {
+                    if (m.type === 'confirm' && m.action_id === action_id) {
+                        return Object.assign({}, m, {
+                            type: 'confirm_done',
+                            success: data.success,
+                            resultMsg: data.success ? data.message : ('Fout: ' + (data.error || 'Onbekend')),
+                        });
+                    }
+                    return m;
+                });
+            });
+        } catch(e) {
+            setMessages(function(prev) {
+                return prev.map(function(m) {
+                    if (m.type === 'confirm' && m.action_id === action_id) {
+                        return Object.assign({}, m, { type: 'confirm_done', success: false, resultMsg: 'Verbindingsfout: ' + e.message });
+                    }
+                    return m;
+                });
+            });
+        }
+        setExecutingId(null);
+    }, []);
+
+    // Annuleer een voorgestelde actie
+    var rejectConfirm = useCallback(function(action_id) {
+        setMessages(function(prev) {
+            return prev.map(function(m) {
+                if (m.type === 'confirm' && m.action_id === action_id) {
+                    return Object.assign({}, m, { type: 'confirm_done', success: null, resultMsg: 'Geannuleerd.' });
+                }
+                return m;
+            });
+        });
+    }, []);
 
     useEffect(function () {
         if (open && messagesEndRef.current) {
@@ -176,8 +241,23 @@ export default function SousChef() {
                             setMessages(function (prev) {
                                 return prev.slice(0, -1).concat([{ role: 'assistant', type: 'streaming', content: assistantText }]);
                             });
+                        } else if (event.type === 'confirm') {
+                            // Verwijder streaming placeholder, voeg confirm-kaart in
+                            setMessages(function(prev) {
+                                return prev.slice(0, -1).concat([{
+                                    role: 'assistant',
+                                    type: 'confirm',
+                                    action_id: event.action_id,
+                                    action: event.action,
+                                    label: event.label,
+                                    payload: event.payload,
+                                }]);
+                            });
                         } else if (event.type === 'done') {
                             setMessages(function (prev) {
+                                // Streaming placeholder weggooien als er niks getypt werd (bij confirm flow)
+                                var last = prev[prev.length - 1];
+                                if (last && last.type === 'streaming' && !assistantText) return prev.slice(0, -1);
                                 return prev.slice(0, -1).concat([{ role: 'assistant', type: 'text', content: assistantText }]);
                             });
                         } else if (event.type === 'error') {
@@ -193,7 +273,7 @@ export default function SousChef() {
                 setMessages(function (prev) {
                     return prev.slice(0, -1).concat([{
                         role: 'assistant', type: 'error',
-                        content: 'Verbindingsfout: ' + err.message + '\n\nControleer je ANTHROPIC_API_KEY in .env.local',
+                        content: 'Verbindingsfout: ' + err.message + '\n\nControleer je GROQ_API_KEY in .env.local',
                     }]);
                 });
             }
@@ -244,7 +324,7 @@ export default function SousChef() {
                                 <div className="sc-title">Digital Sous-Chef</div>
                                 <div className="sc-subtitle">
                                     <span className="sc-online-dot"></span>
-                                    Hop &amp; Bites AI · Claude 3.5 Sonnet
+                                    Hop &amp; Bites AI · Groq llama-3.3
                                 </div>
                             </div>
                         </div>
@@ -264,7 +344,7 @@ export default function SousChef() {
                     {/* Messages */}
                     <div className="sc-messages">
                         {messages.map(function (msg, i) {
-                            return renderMessage(msg, i);
+                            return renderMessage(msg, i, executeConfirm, rejectConfirm, executingId);
                         })}
                         {loading && messages[messages.length - 1]?.type === 'streaming' && (
                             <div className="sc-typing">
@@ -340,7 +420,50 @@ export default function SousChef() {
     );
 }
 
-function renderMessage(msg, i) {
+function renderMessage(msg, i, onConfirm, onReject, executingId) {
+    if (msg.type === 'confirm') {
+        var busy = executingId === msg.action_id;
+        return (
+            <div key={i} className="sc-confirm-card">
+                <div className="sc-confirm-icon">
+                    <i className="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div className="sc-confirm-body">
+                    <div className="sc-confirm-label">{msg.label}</div>
+                    <div className="sc-confirm-hint">Deze actie schrijft naar de database.</div>
+                </div>
+                <div className="sc-confirm-btns">
+                    <button
+                        className="sc-confirm-accept"
+                        disabled={busy}
+                        onClick={function() { onConfirm(msg.action_id, msg.action, msg.payload); }}
+                    >
+                        {busy ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                        Accepteren
+                    </button>
+                    <button
+                        className="sc-confirm-reject"
+                        disabled={busy}
+                        onClick={function() { onReject(msg.action_id); }}
+                    >
+                        Annuleren
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (msg.type === 'confirm_done') {
+        var icon = msg.success === true ? 'fa-check-circle' : msg.success === false ? 'fa-times-circle' : 'fa-ban';
+        var cls  = msg.success === true ? 'sc-confirm-result--ok' : msg.success === false ? 'sc-confirm-result--err' : 'sc-confirm-result--cancel';
+        return (
+            <div key={i} className={'sc-confirm-result ' + cls}>
+                <i className={'fa-solid ' + icon}></i>
+                {msg.resultMsg}
+            </div>
+        );
+    }
+
     if (msg.type === 'tool_running') {
         return (
             <div key={i} className="sc-tool-card sc-tool-running">
