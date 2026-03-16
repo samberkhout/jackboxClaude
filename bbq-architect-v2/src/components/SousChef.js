@@ -98,10 +98,32 @@ function formatText(text) {
     });
 }
 
+var STORAGE_KEY = 'souschef_messages_v1';
+var MAX_STORED = 40; // max berichten in geheugen
+
+function loadMessages() {
+    try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            var parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+    } catch (e) { /* ignore */ }
+    return [WELCOME_MSG];
+}
+
+function saveMessages(msgs) {
+    try {
+        // Sla max MAX_STORED berichten op, altijd welcome als eerste
+        var toSave = msgs.slice(-MAX_STORED);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch (e) { /* ignore */ }
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SousChef() {
     var [open, setOpen] = useState(false);
-    var [messages, setMessages] = useState([WELCOME_MSG]);
+    var [messages, setMessages] = useState(loadMessages);
     var [input, setInput] = useState('');
     var [loading, setLoading] = useState(false);
     var [showActions, setShowActions] = useState(true);
@@ -110,6 +132,14 @@ export default function SousChef() {
     var messagesEndRef = useRef();
     var inputRef = useRef();
     var abortRef = useRef(null);
+
+    // Sla berichten op in localStorage na elke wijziging
+    useEffect(function() { saveMessages(messages); }, [messages]);
+
+    function clearHistory() {
+        localStorage.removeItem(STORAGE_KEY);
+        setMessages([WELCOME_MSG]);
+    }
 
     // Voer een bevestigde actie uit via het execute-endpoint
     var executeConfirm = useCallback(async function(action_id, action, payload) {
@@ -293,7 +323,7 @@ export default function SousChef() {
     }
 
     function clearChat() {
-        setMessages([WELCOME_MSG]);
+        clearHistory();
         setShowActions(true);
     }
 

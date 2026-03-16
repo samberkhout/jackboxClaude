@@ -108,3 +108,26 @@ export function calcMargeForOfferte(offerte, gerechten, inventory) {
 export function margeColor(pct) { return pct > 70 ? 'green' : pct >= 60 ? 'orange' : 'red'; }
 export function margeLabel(pct) { return pct > 70 ? 'Strong' : pct >= 60 ? 'Watchful' : 'Low Margin'; }
 export function margeEmoji(pct) { return pct > 70 ? '🟢' : pct >= 60 ? '🟡' : '🔴'; }
+
+// ── CSV Export ──────────────────────────────────────────────────────────────
+export function exportCsv(bestandsnaam, rijen) {
+    if (!rijen || rijen.length === 0) return;
+    var kolommen = Object.keys(rijen[0]);
+    var csv = [kolommen.join(';')]
+        .concat(rijen.map(function (rij) {
+            return kolommen.map(function (k) {
+                var v = rij[k];
+                if (v == null) return '';
+                if (typeof v === 'object') v = JSON.stringify(v);
+                return '"' + String(v).replace(/"/g, '""') + '"';
+            }).join(';');
+        }))
+        .join('\n');
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = bestandsnaam;
+    a.click();
+    URL.revokeObjectURL(url);
+}

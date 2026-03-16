@@ -358,6 +358,16 @@ body {
   margin-bottom: 24px;
 }
 
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+@media (max-width: 700px) {
+  .analytics-grid { grid-template-columns: 1fr; }
+}
+
 .stat-card {
   background: var(--card);
   backdrop-filter: var(--glass-blur);
@@ -877,6 +887,50 @@ body {
   grid-template-columns: 1fr 340px;
   gap: 18px;
   align-items: start;
+}
+
+/* Week view */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 24px;
+}
+.week-col {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s;
+  min-height: 160px;
+}
+.week-col--today { border-color: rgba(255,191,0,.4); }
+.week-col--selected { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(255,191,0,.15); }
+.week-col-head {
+  padding: 10px 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.week-col-body { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.week-event {
+  padding: 4px 6px;
+  background: rgba(255,191,0,.07);
+  border-radius: 6px;
+  cursor: default;
+}
+.week-prep {
+  padding: 4px 6px;
+  background: rgba(167,139,250,.07);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.week-prep--done { opacity: 0.4; }
+.week-prep--late { background: rgba(239,68,68,.08); }
+@media (max-width: 768px) {
+  .week-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .week-col-head { padding: 6px 4px 4px; }
 }
 
 .agenda-side {
@@ -4493,6 +4547,66 @@ body {
 
 .fa-card:hover .fa-card-delete { opacity: 1; }
 .fa-card-delete:hover { background: rgba(220,50,50,.8); }
+.fa-card--selected { outline: 2px solid var(--brand); outline-offset: 2px; }
+.fa-card-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.55);
+  border: 2px solid rgba(255,255,255,.4);
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s, background .15s;
+}
+.fa-card:hover .fa-card-check { opacity: 1; }
+.fa-card-check--on { opacity: 1 !important; background: var(--brand); border-color: var(--brand); color: #000; }
+
+/* Bulk actie balk */
+.fa-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: rgba(255,191,0,.08);
+  border: 1px solid rgba(255,191,0,.2);
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.fa-bulk-count { font-weight: 800; font-size: 13px; color: var(--brand); margin-right: 4px; }
+.fa-bulk-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.fa-bulk-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.fa-bulk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.fa-bulk-btn--cat { background: var(--brand); color: #000; }
+.fa-bulk-btn--del { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.25); }
+.fa-bulk-btn--sel { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--border); }
+.fa-bulk-btn--cancel { background: transparent; color: var(--muted); border: 1px solid var(--border); }
 
 /* Tags onder thumbnail */
 .fa-card-tags {

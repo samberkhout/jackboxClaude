@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useSupabase, useSettings } from '@/lib/useSupabase';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
-import { fmt, fmtNl, calcLineTotals, today, addDays, genNummer, calcMargeForOfferte, margeColor, margeLabel, margeEmoji } from '@/lib/utils';
+import { fmt, fmtNl, calcLineTotals, today, addDays, genNummer, calcMargeForOfferte, margeColor, margeLabel, margeEmoji, exportCsv } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { generatePDF } from '@/lib/pdfGenerator';
 import MenuWizard from '@/components/MenuWizard';
@@ -272,6 +272,24 @@ export default function Offertes() {
         generatePDF({ type: 'offerte', form: form, settings: settings, totals: totals });
     }
 
+    function emailOfferte() {
+        var totals = calcLineTotals(form.items);
+        var onderwerp = encodeURIComponent('Offerte ' + (form.nummer || '') + ' — ' + ((settings && settings.bedrijf_naam) || 'Hop & Bites'));
+        var regels = (form.items || []).map(function(item) {
+            return item.qty + 'x ' + item.desc + ' — €' + ((item.qty || 0) * (item.prijs || 0)).toFixed(2);
+        }).join('\n');
+        var body = encodeURIComponent(
+            'Beste ' + (form.client_naam || '') + ',\n\n' +
+            'Hierbij ontvangt u onze offerte ' + (form.nummer || '') + ' d.d. ' + (form.datum || '') + '.\n\n' +
+            'Samenvatting:\n' + regels + '\n\n' +
+            'Totaal excl. BTW: €' + totals.subtotaal.toFixed(2) + '\n' +
+            'Totaal incl. BTW: €' + totals.totaal.toFixed(2) + '\n\n' +
+            'Met vriendelijke groet,\n' + ((settings && settings.bedrijf_naam) || 'Hop & Bites')
+        );
+        var mailto = 'mailto:' + (form.client_email || '') + '?subject=' + onderwerp + '&body=' + body;
+        window.open(mailto, '_blank');
+    }
+
     // Editor
     if (editing !== null && form) {
         var totals = calcLineTotals(form.items);
@@ -339,6 +357,7 @@ export default function Offertes() {
                         <button className="btn btn-brand" onClick={saveOfferte}><i className="fa-solid fa-save"></i> Opslaan</button>
                         <button className="btn" style={{ background: '#B48C14', color: '#000' }} onClick={function () { setShowWizardForExisting(true); }}><i className="fa-solid fa-utensils"></i> Menu Samenstellen</button>
                         <button className="btn btn-cyan" onClick={downloadOfferte}><i className="fa-solid fa-file-pdf"></i> PDF</button>
+                        <button className="btn btn-ghost btn-sm" onClick={emailOfferte} title={form.client_email ? 'Email naar ' + form.client_email : 'Geen email adres ingevuld'}><i className="fa-solid fa-envelope"></i> Email</button>
                         {editing !== 'new' && form.status === 'geaccepteerd' && <button className="btn btn-green" onClick={convertToFactuur}><i className="fa-solid fa-file-invoice"></i> Naar Factuur</button>}
                         {editing !== 'new' && <button className="btn btn-red" onClick={deleteOfferte}><i className="fa-solid fa-trash"></i> Verwijderen</button>}
                     </div>
@@ -436,6 +455,11 @@ export default function Offertes() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600 }}>Offertes ({offertes.length})</h3>
                 <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={function () {
+                        exportCsv('offertes.csv', offertes.map(function(o) {
+                            return { nummer: o.nummer, klant: o.client_naam, datum: o.datum, status: o.status, gasten: o.aantal_gasten, prijs_pp: o.basis_prijs_pp };
+                        }));
+                    }}><i className="fa-solid fa-file-csv"></i> CSV</button>
                     <button className="btn btn-brand" onClick={function () { setShowWizard(true); }} style={{ background: '#B48C14' }}><i className="fa-solid fa-utensils"></i> Stel Menu Samen</button>
                     <button className="btn btn-brand" onClick={newOfferte}><i className="fa-solid fa-plus"></i> Nieuwe Offerte</button>
                 </div>

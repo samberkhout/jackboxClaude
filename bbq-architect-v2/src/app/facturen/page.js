@@ -4,7 +4,7 @@ import { useSupabase } from '@/lib/useSupabase';
 import { useSettings } from '@/lib/useSupabase';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
-import { fmt, fmtNl, calcLineTotals, today, addDays, genNummer } from '@/lib/utils';
+import { fmt, fmtNl, calcLineTotals, today, addDays, genNummer, exportCsv } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { generatePDF } from '@/lib/pdfGenerator';
 
@@ -151,7 +151,15 @@ export default function Facturen() {
         <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600 }}>Facturen ({facturen.length})</h3>
-                <button className="btn btn-brand" onClick={newFactuur}><i className="fa-solid fa-plus"></i> Nieuwe Factuur</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={function() {
+                        exportCsv('facturen.csv', facturen.map(function(f) {
+                            var total = (f.items || []).reduce(function(s, i) { return s + (i.qty||0)*(i.prijs||0); }, 0);
+                            return { nummer: f.nummer, klant: f.client_naam, datum: f.datum, vervaldatum: f.vervaldatum, status: f.status, totaal: total.toFixed(2) };
+                        }));
+                    }}><i className="fa-solid fa-file-csv"></i> CSV</button>
+                    <button className="btn btn-brand" onClick={newFactuur}><i className="fa-solid fa-plus"></i> Nieuwe Factuur</button>
+                </div>
             </div>
             <div className="panel">
                 {facturen.length === 0 && <div className="empty-state"><i className="fa-solid fa-file-invoice"></i><p>Nog geen facturen aangemaakt</p></div>}

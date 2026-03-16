@@ -127,6 +127,18 @@ export default function PriceIntelligence() {
     var compareList = groupedList.filter(function (g) { return g.items.length > 1; });
     var displayList = view === 'vergelijk' ? compareList : groupedList;
 
+    // Prijsalerts: stijgingen > 5%
+    var prijsAlerts = prices
+        .filter(function (p) {
+            return p.previous_price !== null && p.previous_price > 0 &&
+                (p.price_per_unit - p.previous_price) / p.previous_price > 0.05;
+        })
+        .sort(function (a, b) {
+            var diffA = (a.price_per_unit - a.previous_price) / a.previous_price;
+            var diffB = (b.price_per_unit - b.previous_price) / b.previous_price;
+            return diffB - diffA;
+        });
+
     // Recent gewijzigde prijzen
     var recentChanges = prices
         .filter(function (p) { return p.previous_price !== null && p.price_per_unit !== p.previous_price; })
@@ -236,6 +248,43 @@ export default function PriceIntelligence() {
                 <div style={{ marginBottom: 16, padding: '10px 18px', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, fontSize: 12, color: 'var(--muted)' }}>
                     <i className="fa-solid fa-bell-slash" style={{ color: 'var(--red)', marginRight: 6 }}></i>
                     Notificaties geblokkeerd. Sta ze toe via <b>Browserinstellingen → Sitemachtigingen → Meldingen</b>.
+                </div>
+            )}
+
+            {/* ---- Prijsalerts: stijgingen > 5% ---- */}
+            {prijsAlerts.length > 0 && (
+                <div style={{ marginBottom: 20, borderRadius: 12, border: '1px solid rgba(239,68,68,.35)', background: 'rgba(239,68,68,.06)', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid rgba(239,68,68,.2)', background: 'rgba(239,68,68,.1)' }}>
+                        <i className="fa-solid fa-triangle-exclamation" style={{ color: 'var(--red)', fontSize: 16 }}></i>
+                        <span style={{ fontWeight: 700, color: 'var(--red)', fontSize: 14 }}>
+                            {prijsAlerts.length} prijsstijging{prijsAlerts.length !== 1 ? 'en' : ''} &gt;5% gedetecteerd
+                        </span>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 4 }}>— controleer je inkoop</span>
+                    </div>
+                    <div style={{ padding: '8px 0' }}>
+                        {prijsAlerts.map(function (p) {
+                            var pct = ((p.price_per_unit - p.previous_price) / p.previous_price * 100);
+                            return (
+                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: '1px solid rgba(239,68,68,.1)' }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,.15)', color: 'var(--red)', fontSize: 13, flexShrink: 0 }}>
+                                        <i className="fa-solid fa-arrow-trend-up"></i>
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <span style={{ fontWeight: 600, fontSize: 13 }}>{p.product_name}</span>
+                                        <span style={{ marginLeft: 8, padding: '1px 7px', borderRadius: 10, background: (SUPPLIER_COLORS[p.supplier_name] || '#666') + '22', color: SUPPLIER_COLORS[p.supplier_name] || 'var(--muted)', fontWeight: 600, fontSize: 10 }}>{p.supplier_name}</span>
+                                    </div>
+                                    <div style={{ fontSize: 12, color: 'var(--muted)', flexShrink: 0 }}>
+                                        <span style={{ textDecoration: 'line-through' }}>€{Number(p.previous_price).toFixed(2)}</span>
+                                        <i className="fa-solid fa-arrow-right" style={{ margin: '0 6px', fontSize: 9 }}></i>
+                                        <span style={{ fontWeight: 700, color: 'var(--text)' }}>€{Number(p.price_per_unit).toFixed(2)}</span>
+                                    </div>
+                                    <div style={{ flexShrink: 0, padding: '3px 8px', borderRadius: 6, background: 'rgba(239,68,68,.15)', color: 'var(--red)', fontWeight: 800, fontSize: 12 }}>
+                                        ▲ {pct.toFixed(1)}%
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 

@@ -12,6 +12,7 @@ export default function Agenda() {
     var [year, setYear] = useState(new Date().getFullYear());
     var [month, setMonth] = useState(new Date().getMonth());
     var [selected, setSelected] = useState(today());
+    var [agendaView, setAgendaView] = useState('maand'); // 'maand' | 'week'
     var [showPrepForm, setShowPrepForm] = useState(false);
     var [showEventForm, setShowEventForm] = useState(false);
     var [newTask, setNewTask] = useState({ event_id: '', text: '', dagen: -1 });
@@ -45,6 +46,21 @@ export default function Agenda() {
     }
 
     var todayStr = today();
+
+    // Week view: 7 dagen rondom de geselecteerde dag (Ma–Zo)
+    function getWeekDagen(dateStr) {
+        var d = new Date(dateStr + 'T00:00:00');
+        var dag = (d.getDay() + 6) % 7; // 0=ma, 6=zo
+        var dagen = [];
+        for (var i = 0; i < 7; i++) {
+            var dd = new Date(d);
+            dd.setDate(d.getDate() - dag + i);
+            var str = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0');
+            dagen.push({ date: str, dag: dd.getDate(), maand: MAANDEN[dd.getMonth()].slice(0, 3) });
+        }
+        return dagen;
+    }
+    var weekDagen = getWeekDagen(selected);
 
     // Helper: get prep-task date
     function getPrepDate(task) {
@@ -115,7 +131,19 @@ export default function Agenda() {
                         {events.length} events · {prepTasks.filter(function (p) { return !p.done; }).length} open prep-taken
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                        <button
+                            className={'btn btn-sm' + (agendaView === 'maand' ? ' btn-brand' : ' btn-ghost')}
+                            style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
+                            onClick={function() { setAgendaView('maand'); }}
+                        ><i className="fa-solid fa-calendar-days"></i> Maand</button>
+                        <button
+                            className={'btn btn-sm' + (agendaView === 'week' ? ' btn-brand' : ' btn-ghost')}
+                            style={{ borderRadius: 0 }}
+                            onClick={function() { setAgendaView('week'); }}
+                        ><i className="fa-solid fa-calendar-week"></i> Week</button>
+                    </div>
                     <button className="btn btn-ghost btn-sm" onClick={goToday}>Vandaag</button>
                     <button className="btn btn-brand btn-sm" onClick={function () { setShowEventForm(!showEventForm); setShowPrepForm(false); }}>
                         <i className="fa-solid fa-plus"></i> Nieuw Event
@@ -123,8 +151,64 @@ export default function Agenda() {
                 </div>
             </div>
 
+            {/* ═══ WEEK VIEW ═══ */}
+            {agendaView === 'week' && (
+                <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                        <button className="cal-nav" onClick={function() { var d = new Date(selected + 'T00:00:00'); d.setDate(d.getDate() - 7); setSelected(d.toISOString().slice(0, 10)); }}><i className="fa-solid fa-chevron-left"></i></button>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>
+                            {weekDagen[0].dag} {weekDagen[0].maand} – {weekDagen[6].dag} {weekDagen[6].maand} {year}
+                        </span>
+                        <button className="cal-nav" onClick={function() { var d = new Date(selected + 'T00:00:00'); d.setDate(d.getDate() + 7); setSelected(d.toISOString().slice(0, 10)); }}><i className="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <div className="week-grid">
+                        {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(function(dn, i) {
+                            var dag = weekDagen[i];
+                            var isVandaag = dag.date === todayStr;
+                            var dayEvts = eventsForDate(dag.date);
+                            var dayPreps = prepsForDate(dag.date);
+                            return (
+                                <div key={i} className={'week-col' + (isVandaag ? ' week-col--today' : '') + (dag.date === selected ? ' week-col--selected' : '')}
+                                     onClick={function() { setSelected(dag.date); }}>
+                                    <div className="week-col-head">
+                                        <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>{dn}</div>
+                                        <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: isVandaag ? 'var(--brand)' : 'var(--text)' }}>{dag.dag}</div>
+                                        <div style={{ fontSize: 9, color: 'var(--muted)' }}>{dag.maand}</div>
+                                    </div>
+                                    <div className="week-col-body">
+                                        {dayEvts.map(function(ev) {
+                                            var kleur = ev.status === 'confirmed' ? 'var(--green)' : ev.status === 'optie' ? 'var(--brand)' : 'var(--amber)';
+                                            return (
+                                                <div key={ev.id} className="week-event" style={{ borderLeft: '3px solid ' + kleur }}>
+                                                    <i className="fa-solid fa-fire" style={{ fontSize: 8, color: kleur, marginRight: 4 }}></i>
+                                                    <span style={{ fontSize: 10, fontWeight: 700 }}>{ev.name.split(' ').slice(0, 3).join(' ')}</span>
+                                                    {ev.guests > 0 && <span style={{ fontSize: 9, color: 'var(--muted)', display: 'block' }}>{ev.guests} gasten</span>}
+                                                </div>
+                                            );
+                                        })}
+                                        {dayPreps.map(function(pp) {
+                                            var isPast = pp.task.done ? false : dag.date < todayStr;
+                                            return (
+                                                <div key={pp.task.id} className={'week-prep' + (pp.task.done ? ' week-prep--done' : '') + (isPast ? ' week-prep--late' : '')}
+                                                     onClick={function(e) { e.stopPropagation(); toggleTask(pp.task); }}>
+                                                    <i className={'fa-solid fa-clipboard-check'} style={{ fontSize: 8, marginRight: 4 }}></i>
+                                                    <span style={{ fontSize: 10, textDecoration: pp.task.done ? 'line-through' : 'none' }}>{pp.task.text.split(' ').slice(0, 4).join(' ')}</span>
+                                                </div>
+                                            );
+                                        })}
+                                        {dayEvts.length === 0 && dayPreps.length === 0 && (
+                                            <div style={{ fontSize: 9, color: 'var(--border)', textAlign: 'center', paddingTop: 8 }}>—</div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Agenda layout: calendar + side panel */}
-            <div className="agenda-layout">
+            {agendaView === 'maand' && <div className="agenda-layout">
                 {/* Calendar */}
                 <div>
                     <div className="calendar">
@@ -450,6 +534,7 @@ export default function Agenda() {
                     </div>
                 </div>
             </div>
+            }
         </>
     );
 }

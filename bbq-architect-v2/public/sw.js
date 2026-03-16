@@ -7,16 +7,31 @@
  * 3. Basis offline-caching van de app shell
  */
 
-var CACHE_NAME = 'bbq-architect-v1';
-var APP_SHELL = ['/', '/recepten', '/price-intelligence', '/events', '/agenda', '/logo.png'];
+var CACHE_NAME = 'bbq-architect-v2';
+var APP_SHELL = [
+    '/',
+    '/agenda',
+    '/events',
+    '/offertes',
+    '/facturen',
+    '/recepten',
+    '/logistiek',
+    '/haccp',
+    '/price-intelligence',
+    '/foto-archief',
+    '/logo.png',
+];
 
 // ── Installatie: cache de app shell ──────────────────────────────
 self.addEventListener('install', function (event) {
     event.waitUntil(
         caches.open(CACHE_NAME).then(function (cache) {
-            return cache.addAll(APP_SHELL).catch(function () {
-                // Niet kritiek als caching mislukt (bv. offline bij eerste install)
-            });
+            // Voeg elke URL afzonderlijk toe zodat één mislukking niet alles blokkeert
+            return Promise.all(
+                APP_SHELL.map(function (url) {
+                    return cache.add(url).catch(function () {});
+                })
+            );
         })
     );
     self.skipWaiting();
@@ -35,16 +50,32 @@ self.addEventListener('activate', function (event) {
     self.clients.claim();
 });
 
-// ── Fetch: network-first voor API, cache-first voor assets ───────
+// ── Fetch: stale-while-revalidate voor pagina's, skip voor API ───
 self.addEventListener('fetch', function (event) {
     var url = new URL(event.request.url);
 
-    // API-routes altijd via netwerk (nooit cachen)
-    if (url.pathname.startsWith('/api/')) return;
+    // API-routes en externe URLs altijd via netwerk (nooit cachen)
+    if (url.pathname.startsWith('/api/') || url.origin !== self.location.origin) return;
+
+    // Alleen GET-requests cachen
+    if (event.request.method !== 'GET') return;
 
     event.respondWith(
-        fetch(event.request).catch(function () {
-            return caches.match(event.request);
+        caches.open(CACHE_NAME).then(function (cache) {
+            return cache.match(event.request).then(function (cached) {
+                var networkFetch = fetch(event.request).then(function (response) {
+                    // Sla succesvolle responses op in cache (geen opaque responses)
+                    if (response && response.status === 200 && response.type !== 'opaque') {
+                        cache.put(event.request, response.clone());
+                    }
+                    return response;
+                }).catch(function () {
+                    return null;
+                });
+
+                // Stale-while-revalidate: geef cache meteen terug en ververs op achtergrond
+                return cached || networkFetch;
+            });
         })
     );
 });

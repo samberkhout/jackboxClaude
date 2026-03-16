@@ -150,6 +150,19 @@ export async function GET(request) {
     }
 }
 
+// ── PATCH — update categorie van een foto ──────────────────────────────────
+export async function PATCH(request) {
+    try {
+        var { id, category } = await request.json();
+        if (!id || !category) return Response.json({ error: 'id en category zijn verplicht' }, { status: 400 });
+        var { error } = await supabase.from('photo_logbook').update({ category: category }).eq('id', id);
+        if (error) throw error;
+        return Response.json({ success: true });
+    } catch (err) {
+        return Response.json({ error: err.message }, { status: 500 });
+    }
+}
+
 // ── DELETE — verwijder een foto ────────────────────────────────────────────
 export async function DELETE(request) {
     try {

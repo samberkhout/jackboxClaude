@@ -1,7 +1,8 @@
 'use client';
 import { useSupabase } from '@/lib/useSupabase';
-import { fmt, fmtNl, safeJsonParse, calcMargeForOfferte } from '@/lib/utils';
+import { fmt, fmtNl, safeJsonParse, calcMargeForOfferte, MAANDEN_KORT, margeColor } from '@/lib/utils';
 import Link from 'next/link';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function Dashboard() {
   var ev = useSupabase('events', []);
@@ -71,6 +72,23 @@ export default function Dashboard() {
 
   // ═══ MARGE CALCULATION ENGINE (Dashboard) — via gedeelde utils ═══
   function _calcMarge(o) { return calcMargeForOfferte(o, gerechtenData, inventory); }
+
+  // ═══ CHART DATA ═══
+  var jaarNu = new Date().getFullYear();
+  var maandOmzet = new Array(12).fill(0);
+  facturen.filter(function(f) { return f.status === 'betaald' && f.datum && f.datum.startsWith(jaarNu); }).forEach(function(f) {
+    var m = parseInt((f.datum || '').split('-')[1], 10) - 1;
+    if (m >= 0 && m < 12) (f.items || []).forEach(function(item) { maandOmzet[m] += (item.qty || 0) * (item.prijs || 0); });
+  });
+  var omzetChartData = MAANDEN_KORT.map(function(naam, i) { return { naam: naam, omzet: Math.round(maandOmzet[i]) }; });
+
+  var margeChartData = offertes
+    .filter(function(o) { return o.menu_selectie && Array.isArray(o.menu_selectie) && o.menu_selectie.length > 0 && o.aantal_gasten > 0; })
+    .slice(-10)
+    .map(function(o) {
+      var m = _calcMarge(o);
+      return { naam: (o.client_naam || '').split(' ')[0] || o.nummer || '?', pct: Math.round(m.margePct) };
+    });
   var lowMargeOffertes = offertes.filter(function (o) {
     if (!o.menu_selectie || !Array.isArray(o.menu_selectie) || o.menu_selectie.length === 0) return false;
     var m = _calcMarge(o);
@@ -364,6 +382,56 @@ export default function Dashboard() {
           <div className="stat-label">Voorraad Alerts</div>
           <div className="stat-sub">{inventory.length} items totaal</div>
         </div>
+      </div>
+
+      {/* ═══ ANALYTICS CHARTS ═══ */}
+      <div className="analytics-grid">
+        <div className="panel">
+          <div className="panel-head">
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-chart-column" style={{ color: 'var(--brand)', fontSize: 12 }}></i> Omzet {jaarNu}
+            </h3>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>betaalde facturen</span>
+          </div>
+          <div style={{ height: 160, marginTop: 8 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={omzetChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barCategoryGap="30%">
+                <XAxis dataKey="naam" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#71717a', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={function(v) { return v >= 1000 ? '€' + Math.round(v/1000) + 'k' : '€' + v; }} />
+                <Tooltip formatter={function(v) { return ['€' + v.toLocaleString('nl-NL'), 'Omzet']; }} contentStyle={{ background: '#18181b', border: '1px solid rgba(255,191,0,.15)', borderRadius: 8, fontSize: 11 }} cursor={{ fill: 'rgba(255,191,0,.06)' }} />
+                <Bar dataKey="omzet" radius={[4, 4, 0, 0]}>
+                  {omzetChartData.map(function(_, i) { return <Cell key={i} fill={maandOmzet[i] > 0 ? '#FFBF00' : '#27272a'} />; })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {margeChartData.length > 0 && (
+          <div className="panel">
+            <div className="panel-head">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-chart-pie" style={{ color: 'var(--purple)', fontSize: 12 }}></i> Marge per Offerte
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>laatste {margeChartData.length}</span>
+            </div>
+            <div style={{ height: 160, marginTop: 8 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={margeChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barCategoryGap="30%">
+                  <XAxis dataKey="naam" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#71717a', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={function(v) { return v + '%'; }} domain={[0, 100]} />
+                  <Tooltip formatter={function(v) { return [v + '%', 'Marge']; }} contentStyle={{ background: '#18181b', border: '1px solid rgba(255,191,0,.15)', borderRadius: 8, fontSize: 11 }} cursor={{ fill: 'rgba(255,191,0,.06)' }} />
+                  <Bar dataKey="pct" radius={[4, 4, 0, 0]}>
+                    {margeChartData.map(function(d, i) {
+                      var kleur = d.pct > 70 ? '#22c55e' : d.pct >= 60 ? '#f59e0b' : '#ef4444';
+                      return <Cell key={i} fill={kleur} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upcoming Events */}

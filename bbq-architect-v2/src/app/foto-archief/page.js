@@ -159,6 +159,8 @@ export default function FotoArchief() {
     var [newCatNaam, setNewCatNaam] = useState('');
     var [newCatKleur, setNewCatKleur] = useState('#3498DB');
     var [newCatIcon, setNewCatIcon] = useState('fa-tag');
+    var [selectedFotos, setSelectedFotos] = useState([]);
+    var [bulkCat, setBulkCat] = useState('');
     var fileInputRef = useRef(null);
 
     // Laad custom categorieën uit localStorage
@@ -340,6 +342,43 @@ export default function FotoArchief() {
         }
     }
 
+    // ── Selectie helpers ───────────────────────────────────────────────────
+    function toggleSelectie(id, e) {
+        e.stopPropagation();
+        setSelectedFotos(function(prev) {
+            return prev.includes(id) ? prev.filter(function(x) { return x !== id; }) : prev.concat([id]);
+        });
+    }
+    function selecteerAlle() {
+        setSelectedFotos(fotos.map(function(f) { return f.id; }));
+    }
+    function deselecteerAlle() { setSelectedFotos([]); }
+
+    // ── Bulk verwijderen ───────────────────────────────────────────────────
+    async function bulkVerwijder() {
+        if (!confirm(selectedFotos.length + ' foto\'s definitief verwijderen?')) return;
+        for (var id of selectedFotos) {
+            await fetch('/api/photo/upload?id=' + id, { method: 'DELETE' });
+        }
+        setSelectedFotos([]);
+        laadFotos();
+    }
+
+    // ── Bulk hercategoriseer ───────────────────────────────────────────────
+    async function bulkHercategoriseer() {
+        if (!bulkCat) return;
+        await Promise.all(selectedFotos.map(function(id) {
+            return fetch('/api/photo/upload', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, category: bulkCat }),
+            });
+        }));
+        setSelectedFotos([]);
+        setBulkCat('');
+        laadFotos();
+    }
+
     // ── Foto verwijderen ───────────────────────────────────────────────────
     async function verwijderFoto(id, e) {
         e.stopPropagation();
@@ -488,6 +527,33 @@ export default function FotoArchief() {
                 })}
             </div>
 
+            {/* Bulk actie balk */}
+            {selectedFotos.length > 0 && (
+                <div className="fa-bulk-bar">
+                    <span className="fa-bulk-count">{selectedFotos.length} geselecteerd</span>
+                    <select
+                        value={bulkCat}
+                        onChange={function(e) { setBulkCat(e.target.value); }}
+                        className="fa-bulk-select"
+                    >
+                        <option value="">Verplaats naar categorie...</option>
+                        {alleCategorieen.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+                    </select>
+                    <button className="fa-bulk-btn fa-bulk-btn--cat" onClick={bulkHercategoriseer} disabled={!bulkCat}>
+                        <i className="fa-solid fa-folder-open"></i> Verplaatsen
+                    </button>
+                    <button className="fa-bulk-btn fa-bulk-btn--del" onClick={bulkVerwijder}>
+                        <i className="fa-solid fa-trash"></i> Verwijderen
+                    </button>
+                    <button className="fa-bulk-btn fa-bulk-btn--sel" onClick={selectedFotos.length < fotos.length ? selecteerAlle : deselecteerAlle}>
+                        {selectedFotos.length < fotos.length ? 'Alles selecteren' : 'Deselecteren'}
+                    </button>
+                    <button className="fa-bulk-btn fa-bulk-btn--cancel" onClick={deselecteerAlle}>
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            )}
+
             {/* Grid */}
             {loading ? (
                 <div className="fa-loading">
@@ -513,11 +579,20 @@ export default function FotoArchief() {
                 <div className="fa-grid">
                     {fotos.map(function(foto) {
                         var kleur = getCatKleur(foto.category) || '#95A5A6';
+                        var isSelected = selectedFotos.includes(foto.id);
                         return (
                             <div
                                 key={foto.id}
-                                className="fa-card"
-                                onClick={function() { setLightbox({ foto: foto, showEdited: true }); }}
+                                className={'fa-card' + (isSelected ? ' fa-card--selected' : '')}
+                                onClick={function() {
+                                    if (selectedFotos.length > 0) {
+                                        setSelectedFotos(function(prev) {
+                                            return prev.includes(foto.id) ? prev.filter(function(x) { return x !== foto.id; }) : prev.concat([foto.id]);
+                                        });
+                                    } else {
+                                        setLightbox({ foto: foto, showEdited: true });
+                                    }
+                                }}
                             >
                                 <div className="fa-card-img-wrap">
                                     <img
@@ -530,6 +605,16 @@ export default function FotoArchief() {
                                         <i className={'fa-solid ' + getCatIcon(foto.category)}></i>
                                         {foto.category}
                                     </span>
+                                    <button
+                                        className={'fa-card-check' + (isSelected ? ' fa-card-check--on' : '')}
+                                        title="Selecteren"
+                                        onClick={function(e) { toggleSelectie(foto.id, e); }}
+                                    >
+                                        {isSelected
+                                            ? <i className="fa-solid fa-check"></i>
+                                            : <i className="fa-regular fa-circle"></i>
+                                        }
+                                    </button>
                                     <button
                                         className="fa-card-delete"
                                         title="Verwijderen"
