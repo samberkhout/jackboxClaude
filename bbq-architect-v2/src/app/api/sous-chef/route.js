@@ -4,15 +4,15 @@
  * AI-agent met function-calling toegang tot Supabase.
  * Reageert als SSE stream zodat de UI realtime tool-executie en tekst toont.
  *
+ * Gebruikt Groq (gratis tier) met llama-3.3-70b-versatile.
+ * Groq heeft een OpenAI-compatibele API — geen extra npm package nodig.
+ *
  * Vereiste omgevingsvariabelen (.env.local):
- *   ANTHROPIC_API_KEY=sk-ant-...    ← Anthropic direct (aanbevolen, ondersteunt tools)
- *   -- OF --
- *   POE_API_KEY=...                 ← Poe API (geen tool-calling, alleen tekst)
- *   POE_BOT_NAME=Claude-3.5-Sonnet  ← Naam van de bot op Poe
+ *   GROQ_API_KEY=gsk_...   ← gratis aan te maken op console.groq.com
  *
  * SSE event formaat:
  *   data: {"type":"tool_start","tool":"...","input":{...}}
- *   data: {"type":"tool_done","tool":"...","label":"..."}
+ *   data: {"type":"tool_done","tool":"..."}
  *   data: {"type":"text","delta":"..."}
  *   data: {"type":"done"}
  *   data: {"type":"error","message":"..."}
@@ -44,90 +44,111 @@ Je hebt directe toegang tot de live database via functie-aanroepen. Gebruik ze a
 
 TOON: Direct. Culinair. Gedreven door kwaliteit én marge.`;
 
-// ── Tool definities ──────────────────────────────────────────────────────────
+// ── Tool definities (OpenAI/Groq formaat) ────────────────────────────────────
 var TOOLS = [
     {
-        name: 'get_supplier_prices',
-        description: 'Zoek actuele leveranciersprijs voor een product in Sligro, Hanos of Bidfood. Gebruik dit bij vragen over inkoop, prijsvergelijking of Smart Sourcing.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                product_naam: { type: 'string', description: 'Naam of deel van de productnaam (bijv. "ribben", "kip", "aardappel")' },
-                leverancier: { type: 'string', description: 'Filter op leverancier: Sligro, Hanos of Bidfood (optioneel)' },
-            },
-            required: ['product_naam'],
-        },
-    },
-    {
-        name: 'get_recipe',
-        description: 'Haal recept(en) op met ingrediënten en bereidingswijze uit de database.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                recept_naam: { type: 'string', description: 'Naam of deel van de receptnaam' },
-                recept_id: { type: 'number', description: 'Exact recept-ID (indien bekend)' },
-            },
-        },
-    },
-    {
-        name: 'get_event',
-        description: 'Haal aankomende event(s) op met klantgegevens, aantal gasten en vega-aantallen.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                event_naam: { type: 'string', description: 'Naam of deel van de eventnaam' },
-                event_id: { type: 'number', description: 'Exact event-ID (indien bekend)' },
-                eerstvolgende: { type: 'boolean', description: 'true = haal het eerstvolgende event op' },
-            },
-        },
-    },
-    {
-        name: 'calculate_foodcost',
-        description: 'Bereken de foodcost en marge van een recept op basis van de meest recente leveranciersprijs. Geeft breakdown per ingredient.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                recept_id: { type: 'number', description: 'ID van het recept' },
-                recept_naam: { type: 'string', description: 'Naam van het recept (als id onbekend is)' },
-                menu_prijs: { type: 'number', description: 'Verkoopprijs per persoon in euro (standaard 38.50)' },
-            },
-        },
-    },
-    {
-        name: 'generate_shopping_list',
-        description: 'Genereer een complete inkooplijst voor een event met de scherpste leveranciersprijs per product.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                event_id: { type: 'number', description: 'ID van het event' },
-                event_naam: { type: 'string', description: 'Naam van het event (als id onbekend is)' },
-            },
-        },
-    },
-    {
-        name: 'suggest_vegan_alternatives',
-        description: 'Zoek vega/vegan alternatieven voor ingrediënten, inclusief beschikbaarheid en prijs bij leveranciers.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                ingredienten: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Lijst van ingrediënten waarvoor je vega-alternatieven wilt',
+        type: 'function',
+        function: {
+            name: 'get_supplier_prices',
+            description: 'Zoek actuele leveranciersprijs voor een product in Sligro, Hanos of Bidfood. Gebruik dit bij vragen over inkoop, prijsvergelijking of Smart Sourcing.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    product_naam: { type: 'string', description: 'Naam of deel van de productnaam (bijv. "ribben", "kip", "aardappel")' },
+                    leverancier: { type: 'string', description: 'Filter op leverancier: Sligro, Hanos of Bidfood (optioneel)' },
                 },
-                aantal_gasten: { type: 'number', description: 'Aantal vega-gasten (voor hoeveelheidsberekening)' },
+                required: ['product_naam'],
             },
-            required: ['ingredienten'],
         },
     },
     {
-        name: 'check_price_changes',
-        description: 'Controleer recente prijswijzigingen bij leveranciers (stijgingen en dalingen). Gebruik dit voor proactieve alerts.',
-        input_schema: {
-            type: 'object',
-            properties: {
-                drempel_pct: { type: 'number', description: 'Minimale wijziging in % om te melden (standaard 3)' },
-                leverancier: { type: 'string', description: 'Filter op leverancier (optioneel)' },
+        type: 'function',
+        function: {
+            name: 'get_recipe',
+            description: 'Haal recept(en) op met ingrediënten en bereidingswijze uit de database.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    recept_naam: { type: 'string', description: 'Naam of deel van de receptnaam' },
+                    recept_id: { type: 'number', description: 'Exact recept-ID (indien bekend)' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_event',
+            description: 'Haal aankomende event(s) op met klantgegevens, aantal gasten en vega-aantallen.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    event_naam: { type: 'string', description: 'Naam of deel van de eventnaam' },
+                    event_id: { type: 'number', description: 'Exact event-ID (indien bekend)' },
+                    eerstvolgende: { type: 'boolean', description: 'true = haal het eerstvolgende event op' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'calculate_foodcost',
+            description: 'Bereken de foodcost en marge van een recept op basis van de meest recente leveranciersprijs. Geeft breakdown per ingredient.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    recept_id: { type: 'number', description: 'ID van het recept' },
+                    recept_naam: { type: 'string', description: 'Naam van het recept (als id onbekend is)' },
+                    menu_prijs: { type: 'number', description: 'Verkoopprijs per persoon in euro (standaard 38.50)' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_shopping_list',
+            description: 'Genereer een complete inkooplijst voor een event met de scherpste leveranciersprijs per product.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    event_id: { type: 'number', description: 'ID van het event' },
+                    event_naam: { type: 'string', description: 'Naam van het event (als id onbekend is)' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'suggest_vegan_alternatives',
+            description: 'Zoek vega/vegan alternatieven voor ingrediënten, inclusief beschikbaarheid en prijs bij leveranciers.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    ingredienten: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Lijst van ingrediënten waarvoor je vega-alternatieven wilt',
+                    },
+                    aantal_gasten: { type: 'number', description: 'Aantal vega-gasten (voor hoeveelheidsberekening)' },
+                },
+                required: ['ingredienten'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'check_price_changes',
+            description: 'Controleer recente prijswijzigingen bij leveranciers (stijgingen en dalingen). Gebruik dit voor proactieve alerts.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    drempel_pct: { type: 'number', description: 'Minimale wijziging in % om te melden (standaard 3)' },
+                    leverancier: { type: 'string', description: 'Filter op leverancier (optioneel)' },
+                },
             },
         },
     },
@@ -403,119 +424,88 @@ function makeSend(controller) {
     };
 }
 
-// ── Poe API fallback (geen tool-calling) ─────────────────────────────────────
-async function callPoeApi(messages, send) {
-    var lastUser = messages.filter(function (m) { return m.role === 'user'; }).pop();
-    var prompt = lastUser ? lastUser.content : '';
-
-    var res = await fetch('https://api.poe.com/bot/' + (process.env.POE_BOT_NAME || 'Claude-3.5-Sonnet'), {
+// ── Groq API call (OpenAI-compatibel) ────────────────────────────────────────
+async function groqChat(messages) {
+    var res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-            'Authorization': 'Bearer ' + process.env.POE_API_KEY,
+            'Authorization': 'Bearer ' + process.env.GROQ_API_KEY,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            max_tokens: 4096,
+            messages: messages,
+            tools: TOOLS,
+            tool_choice: 'auto',
+        }),
     });
 
-    if (!res.ok) throw new Error('Poe API fout: ' + res.status);
-    var data = await res.json();
-    var text = (data.text || data.reply || '').trim();
-
-    // Chunk the text for streaming effect
-    var chunkSize = 60;
-    for (var i = 0; i < text.length; i += chunkSize) {
-        send({ type: 'text', delta: text.slice(i, i + chunkSize) });
-        await new Promise(function (r) { setTimeout(r, 18); });
+    if (!res.ok) {
+        var err = await res.text();
+        throw new Error('Groq API fout ' + res.status + ': ' + err);
     }
+    return res.json();
 }
 
 // ── Main API handler ──────────────────────────────────────────────────────────
 export async function POST(request) {
     var body = await request.json();
     var messages = body.messages || [];
-    var usePoe = !process.env.ANTHROPIC_API_KEY && process.env.POE_API_KEY;
 
     var stream = new ReadableStream({
         async start(controller) {
             var send = makeSend(controller);
             try {
-                // Poe API mode (geen tools)
-                if (usePoe) {
-                    await callPoeApi(messages, send);
+                if (!process.env.GROQ_API_KEY) {
+                    send({ type: 'error', message: 'Geen GROQ_API_KEY geconfigureerd. Gratis aan te maken op console.groq.com' });
                     send({ type: 'done' });
                     controller.close();
                     return;
                 }
 
-                // Anthropic mode met tool-calling
-                if (!process.env.ANTHROPIC_API_KEY) {
-                    send({ type: 'error', message: 'Geen API-sleutel geconfigureerd. Voeg ANTHROPIC_API_KEY of POE_API_KEY toe aan .env.local' });
-                    send({ type: 'done' });
-                    controller.close();
-                    return;
-                }
-
-                var Anthropic = (await import('@anthropic-ai/sdk')).default;
-                var client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-                var currentMessages = messages.map(function (m) {
-                    return { role: m.role, content: m.content };
-                });
+                // Bouw berichten op met systeem prompt
+                var currentMessages = [
+                    { role: 'system', content: SYSTEM_PROMPT },
+                    ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+                ];
 
                 var MAX_ITERATIONS = 6;
-                var iteration = 0;
+                for (var i = 0; i < MAX_ITERATIONS; i++) {
+                    var response = await groqChat(currentMessages);
+                    var choice = response.choices[0];
+                    var msg = choice.message;
 
-                while (iteration < MAX_ITERATIONS) {
-                    iteration++;
+                    if (choice.finish_reason === 'tool_calls') {
+                        // Voeg assistant bericht met tool_calls toe aan history
+                        currentMessages.push(msg);
 
-                    var response = await client.messages.create({
-                        model: 'claude-3-5-sonnet-20241022',
-                        max_tokens: 4096,
-                        system: SYSTEM_PROMPT,
-                        tools: TOOLS,
-                        messages: currentMessages,
-                    });
+                        for (var tc of msg.tool_calls) {
+                            var toolName = tc.function.name;
+                            var toolInput;
+                            try { toolInput = JSON.parse(tc.function.arguments); } catch(e) { toolInput = {}; }
 
-                    if (response.stop_reason === 'end_turn') {
-                        // Stream de tekst in chunks
-                        var fullText = '';
-                        for (var block of response.content) {
-                            if (block.type === 'text') fullText += block.text;
-                        }
-                        var chunkSize = 60;
-                        for (var ci = 0; ci < fullText.length; ci += chunkSize) {
-                            send({ type: 'text', delta: fullText.slice(ci, ci + chunkSize) });
-                            await new Promise(function (r) { setTimeout(r, 15); });
-                        }
-                        send({ type: 'done' });
-                        break;
-                    }
+                            send({ type: 'tool_start', tool: toolName, input: toolInput });
+                            var result = await executeTool(toolName, toolInput);
+                            send({ type: 'tool_done', tool: toolName });
 
-                    if (response.stop_reason === 'tool_use') {
-                        currentMessages.push({ role: 'assistant', content: response.content });
-
-                        var toolResults = [];
-                        for (var block of response.content) {
-                            if (block.type !== 'tool_use') continue;
-
-                            send({ type: 'tool_start', tool: block.name, input: block.input });
-
-                            var result = await executeTool(block.name, block.input);
-
-                            send({ type: 'tool_done', tool: block.name });
-
-                            toolResults.push({
-                                type: 'tool_result',
-                                tool_use_id: block.id,
+                            // Tool result terug als 'tool' rol bericht
+                            currentMessages.push({
+                                role: 'tool',
+                                tool_call_id: tc.id,
                                 content: JSON.stringify(result),
                             });
                         }
-
-                        currentMessages.push({ role: 'user', content: toolResults });
                         continue;
                     }
 
-                    // Unexpected stop reason
+                    // Klaar — stream tekst in chunks voor realtime gevoel
+                    var fullText = msg.content || '';
+                    var chunkSize = 60;
+                    for (var ci = 0; ci < fullText.length; ci += chunkSize) {
+                        send({ type: 'text', delta: fullText.slice(ci, ci + chunkSize) });
+                        await new Promise(function(r) { setTimeout(r, 15); });
+                    }
                     send({ type: 'done' });
                     break;
                 }
