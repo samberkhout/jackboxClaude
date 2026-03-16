@@ -1,0 +1,27 @@
+{
+  "name": "bbq-architect",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@huggingface/transformers": "^3.8.1",
+    "@supabase/supabase-js": "^2.97.0",
+    "jszip": "^3.10.1",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "recharts": "^3.8.0",
+    "sharp": "^0.34.5",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6"
+  }
+}
