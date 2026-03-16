@@ -23,8 +23,7 @@ export function useSupabase(table, defaultVal) {
         if (!supabase) return;
         var channel = supabase
             .channel('rt_' + table + '_' + Math.random().toString(36).slice(2, 6))
-            .on('postgres_changes', { event: '*', schema: 'public', table: table }, function (payload) {
-                console.log('[REALTIME] ' + table + ':', payload.eventType);
+            .on('postgres_changes', { event: '*', schema: 'public', table: table }, function () {
                 fetchData();
             })
             .subscribe();
@@ -41,7 +40,6 @@ export function useSupabase(table, defaultVal) {
                 console.error('[DB] Insert error on ' + table + ':', res.error.message, res.error);
                 throw res.error;
             }
-            console.log('[DB] Inserted into ' + table + ', id=' + (res.data && res.data.id));
             if (res.data) setData(function (prev) { return prev.concat([res.data]); });
             return res.data;
         });

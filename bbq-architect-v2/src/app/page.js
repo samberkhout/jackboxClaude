@@ -1,6 +1,6 @@
 'use client';
 import { useSupabase } from '@/lib/useSupabase';
-import { fmt, fmtNl, safeJsonParse } from '@/lib/utils';
+import { fmt, fmtNl, safeJsonParse, calcMargeForOfferte } from '@/lib/utils';
 import Link from 'next/link';
 
 export default function Dashboard() {
@@ -69,46 +69,11 @@ export default function Dashboard() {
     .sort(function (a, b) { return a.datum < b.datum ? -1 : 1; })
     .slice(0, 3);
 
-  // ═══ MARGE CALCULATION ENGINE (Dashboard) ═══
-  function getInvPrice(naam) {
-    var item = inventory.find(function (i) { return i.naam && i.naam.toLowerCase() === naam.toLowerCase(); });
-    return item ? { price: item.purchase_price || 0, unit: item.unit || 'kg', yield_factor: item.yield_factor || 1.0 } : null;
-  }
-  function calcDishCostPP(gerechtNaam) {
-    var g = gerechtenData.find(function (d) { return d.naam === gerechtNaam; });
-    if (!g || !g.ingredient_costs) return 0;
-    return (g.ingredient_costs || []).reduce(function (sum, item) {
-      var inv2 = getInvPrice(item.naam);
-      var price = inv2 ? inv2.price : 0;
-      var yld = item.yield || (inv2 ? inv2.yield_factor : 1.0) || 1.0;
-      var uf = 1;
-      if (item.unit === 'g' && inv2 && inv2.unit === 'kg') uf = 0.001;
-      if (item.unit === 'ml' && inv2 && inv2.unit === 'L') uf = 0.001;
-      return sum + ((item.qty_pp || 0) * uf / yld) * price;
-    }, 0);
-  }
-  function calcMargeForOfferte(o) {
-    try {
-      var gasten = o.aantal_gasten || (o.items && o.items[0] ? o.items[0].qty : 0) || 0;
-      var pp = o.basis_prijs_pp || 38.50;
-      var revenue = gasten * pp;
-      var fcPP = 0;
-      var ms = o.menu_selectie;
-      if (Array.isArray(ms)) ms.forEach(function (s) { if (s) fcPP += calcDishCostPP(s.gerecht_naam || s.naam || ''); });
-      var fcTotal = fcPP * gasten;
-      var vk = Array.isArray(o.vaste_kosten) ? o.vaste_kosten : [];
-      var vasteKosten = vk.reduce(function (s2, k) { return s2 + (parseFloat(k.bedrag) || 0); }, 0);
-      var profit = revenue - fcTotal - vasteKosten;
-      var pct = revenue > 0 ? (profit / revenue) * 100 : 0;
-      return { gasten: gasten, omzet: revenue, foodcost: fcTotal, vasteKosten: vasteKosten, winst: profit, margePct: pct };
-    } catch (e) {
-      console.error('[MARGE] dashboard calc error:', e);
-      return { gasten: 0, omzet: 0, foodcost: 0, vasteKosten: 0, winst: 0, margePct: 0 };
-    }
-  }
+  // ═══ MARGE CALCULATION ENGINE (Dashboard) — via gedeelde utils ═══
+  function _calcMarge(o) { return calcMargeForOfferte(o, gerechtenData, inventory); }
   var lowMargeOffertes = offertes.filter(function (o) {
     if (!o.menu_selectie || !Array.isArray(o.menu_selectie) || o.menu_selectie.length === 0) return false;
-    var m = calcMargeForOfferte(o);
+    var m = _calcMarge(o);
     return m.gasten > 0 && m.margePct < 60 && o.datum >= today;
   });
 
@@ -152,7 +117,7 @@ export default function Dashboard() {
 
       {/* MARGE / PRICE-SHOCK WARNING */}
       {lowMargeOffertes.map(function (o) {
-        var m = calcMargeForOfferte(o);
+        var m = _calcMarge(o);
         return (
           <Link href="/offertes" key={'marge-' + o.id} style={{ textDecoration: 'none', display: 'block', marginBottom: 12 }}>
             <div className="price-shock-banner">

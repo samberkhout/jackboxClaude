@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { safeJsonParse } from '@/lib/utils';
 
 /**
  * MenuWizard — Step-by-step dish selection wizard
@@ -12,7 +13,7 @@ import { supabase } from '@/lib/supabase';
  */
 export default function MenuWizard({ onComplete, onClose, settings, existingOfferte }) {
     var ex = existingOfferte || {};
-    var existingMenu = ex.menu_selectie ? (typeof ex.menu_selectie === 'string' ? JSON.parse(ex.menu_selectie) : ex.menu_selectie) : {};
+    var existingMenu = ex.menu_selectie ? safeJsonParse(ex.menu_selectie, ex.menu_selectie) : {};
 
     var [gangen, setGangen] = useState([]);
     var [gerechten, setGerechten] = useState([]);

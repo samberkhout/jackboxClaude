@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useSupabase } from '@/lib/useSupabase';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/Toast';
+import { safeJsonParse } from '@/lib/utils';
 
 export default function Logistiek() {
     var { data: rtrItems, insert: insertRtr, update: updateRtr, remove: removeRtr, setData: setRtrItems } = useSupabase('rtr_items', []);
@@ -25,7 +26,7 @@ export default function Logistiek() {
     var busChecked = (busOfferte && busOfferte.bus_check && busOfferte.bus_check.checked) || [];
 
     if (busOfferte && busOfferte.menu_selectie) {
-        var menuSel = typeof busOfferte.menu_selectie === 'string' ? JSON.parse(busOfferte.menu_selectie) : busOfferte.menu_selectie;
+        var menuSel = safeJsonParse(busOfferte.menu_selectie, busOfferte.menu_selectie || {});
         var gasten = busOfferte.aantal_gasten || 0;
         var hwMap = {}; // naam → { totaal, categorie }
 

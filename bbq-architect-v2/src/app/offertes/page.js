@@ -3,14 +3,13 @@ import { useState } from 'react';
 import { useSupabase, useSettings } from '@/lib/useSupabase';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
-import { fmt, fmtNl, calcLineTotals, today, addDays, genNummer } from '@/lib/utils';
+import { fmt, fmtNl, calcLineTotals, today, addDays, genNummer, calcMargeForOfferte, margeColor, margeLabel, margeEmoji } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { generatePDF } from '@/lib/pdfGenerator';
 import MenuWizard from '@/components/MenuWizard';
 
 export default function Offertes() {
     var { data: offertes, insert, update, remove } = useSupabase('offertes', []);
-    var facturen = useSupabase('facturen', []);
     var { data: gerechtenData } = useSupabase('gerechten', []);
     var { data: inventoryData } = useSupabase('inventory', []);
     var { settings } = useSettings();
@@ -22,50 +21,8 @@ export default function Offertes() {
     var [showWizardForExisting, setShowWizardForExisting] = useState(false);
     var [vasteKostenInput, setVasteKostenInput] = useState({ naam: '', bedrag: '' });
 
-    // ── Marge Calculation Engine ──
-    function getInvPrice(naam) {
-        var inv = inventoryData.find(function (i) { return i.naam && i.naam.toLowerCase() === naam.toLowerCase(); });
-        return inv ? { price: inv.purchase_price || 0, unit: inv.unit || 'kg', yield_factor: inv.yield_factor || 1.0 } : null;
-    }
-    function calcDishCostPP(gerechtNaam) {
-        var gerecht = gerechtenData.find(function (g) { return g.naam === gerechtNaam; });
-        if (!gerecht || !gerecht.ingredient_costs) return 0;
-        return (gerecht.ingredient_costs || []).reduce(function (sum, item) {
-            var inv = getInvPrice(item.naam);
-            var price = inv ? inv.price : 0;
-            var yld = item.yield || (inv ? inv.yield_factor : 1.0) || 1.0;
-            var unitFactor = 1;
-            if (item.unit === 'g' && inv && inv.unit === 'kg') unitFactor = 0.001;
-            if (item.unit === 'ml' && inv && inv.unit === 'L') unitFactor = 0.001;
-            return sum + ((item.qty_pp || 0) * unitFactor / yld) * price;
-        }, 0);
-    }
-    function calcOfferteMargeData(offerte) {
-        try {
-            var gasten = offerte.aantal_gasten || (offerte.items && offerte.items[0] ? offerte.items[0].qty : 0) || 0;
-            var prijsPP = offerte.basis_prijs_pp || 38.50;
-            var omzet = gasten * prijsPP;
-            var menuGerechten = offerte.menu_selectie || [];
-            if (!Array.isArray(menuGerechten)) menuGerechten = [];
-            var foodcostPP = 0;
-            menuGerechten.forEach(function (sel) {
-                if (sel) foodcostPP += calcDishCostPP(sel.gerecht_naam || sel.naam || '');
-            });
-            var foodcostTotaal = foodcostPP * gasten;
-            var vk = offerte.vaste_kosten;
-            if (!Array.isArray(vk)) vk = [];
-            var vasteKosten = vk.reduce(function (s, k) { return s + (parseFloat(k.bedrag) || 0); }, 0);
-            var nettoWinst = omzet - foodcostTotaal - vasteKosten;
-            var margePct = omzet > 0 ? (nettoWinst / omzet) * 100 : 0;
-            return { gasten: gasten, prijsPP: prijsPP, omzet: omzet, foodcostPP: foodcostPP, foodcostTotaal: foodcostTotaal, vasteKosten: vasteKosten, nettoWinst: nettoWinst, margePct: margePct };
-        } catch (e) {
-            console.error('[MARGE] calcOfferteMargeData error:', e);
-            return { gasten: 0, prijsPP: 38.50, omzet: 0, foodcostPP: 0, foodcostTotaal: 0, vasteKosten: 0, nettoWinst: 0, margePct: 0 };
-        }
-    }
-    function margeColor(pct) { return pct > 70 ? 'green' : pct >= 60 ? 'orange' : 'red'; }
-    function margeLabel(pct) { return pct > 70 ? 'Strong' : pct >= 60 ? 'Watchful' : 'Low Margin'; }
-    function margeEmoji(pct) { return pct > 70 ? '🟢' : pct >= 60 ? '🟡' : '🔴'; }
+    // ── Marge Calculation Engine — via gedeelde utils ──
+    function calcOfferteMargeData(offerte) { return calcMargeForOfferte(offerte, gerechtenData, inventoryData); }
 
     function handleWizardComplete(result) {
         var geldigDagen = (settings && settings.offerte_geldig) || 30;

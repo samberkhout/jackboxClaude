@@ -50,7 +50,7 @@ export default function HACCP() {
         filtered = records.filter(function (r) { return r.status === 'danger' || r.status === 'warn'; });
     } else if (filterEvent) {
         filtered = records.filter(function (r) {
-            return r.event_id === parseInt(filterEvent) || r.offerte_id === filterEvent;
+            return String(r.event_id) === filterEvent || String(r.offerte_id) === filterEvent;
         });
     }
 

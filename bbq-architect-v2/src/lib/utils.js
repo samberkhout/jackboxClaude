@@ -61,3 +61,50 @@ export function safeJsonParse(str, fallback) {
     if (typeof str !== 'string') return str;
     try { return JSON.parse(str); } catch (e) { return fallback; }
 }
+
+// ── Marge Calculation Engine (shared between dashboard and offertes) ─────────
+
+function _getInvPrice(naam, inventory) {
+    var item = (inventory || []).find(function (i) { return i.naam && i.naam.toLowerCase() === naam.toLowerCase(); });
+    return item ? { price: item.purchase_price || 0, unit: item.unit || 'kg', yield_factor: item.yield_factor || 1.0 } : null;
+}
+
+export function calcDishCostPP(gerechtNaam, gerechten, inventory) {
+    var gerecht = (gerechten || []).find(function (g) { return g.naam === gerechtNaam; });
+    if (!gerecht || !gerecht.ingredient_costs) return 0;
+    return (gerecht.ingredient_costs || []).reduce(function (sum, item) {
+        var inv = _getInvPrice(item.naam, inventory);
+        var price = inv ? inv.price : 0;
+        var yld = item.yield || (inv ? inv.yield_factor : 1.0) || 1.0;
+        var unitFactor = 1;
+        if (item.unit === 'g' && inv && inv.unit === 'kg') unitFactor = 0.001;
+        if (item.unit === 'ml' && inv && inv.unit === 'L') unitFactor = 0.001;
+        return sum + ((item.qty_pp || 0) * unitFactor / yld) * price;
+    }, 0);
+}
+
+export function calcMargeForOfferte(offerte, gerechten, inventory) {
+    try {
+        var gasten = offerte.aantal_gasten || (offerte.items && offerte.items[0] ? offerte.items[0].qty : 0) || 0;
+        var prijsPP = offerte.basis_prijs_pp || 38.50;
+        var omzet = gasten * prijsPP;
+        var menuGerechten = offerte.menu_selectie || [];
+        if (!Array.isArray(menuGerechten)) menuGerechten = [];
+        var foodcostPP = menuGerechten.reduce(function (sum, sel) {
+            return sum + (sel ? calcDishCostPP(sel.gerecht_naam || sel.naam || '', gerechten, inventory) : 0);
+        }, 0);
+        var foodcostTotaal = foodcostPP * gasten;
+        var vk = Array.isArray(offerte.vaste_kosten) ? offerte.vaste_kosten : [];
+        var vasteKosten = vk.reduce(function (s, k) { return s + (parseFloat(k.bedrag) || 0); }, 0);
+        var nettoWinst = omzet - foodcostTotaal - vasteKosten;
+        var margePct = omzet > 0 ? (nettoWinst / omzet) * 100 : 0;
+        return { gasten: gasten, prijsPP: prijsPP, omzet: omzet, foodcostPP: foodcostPP, foodcostTotaal: foodcostTotaal, vasteKosten: vasteKosten, nettoWinst: nettoWinst, margePct: margePct };
+    } catch (e) {
+        console.error('[MARGE] calc error:', e);
+        return { gasten: 0, prijsPP: 38.50, omzet: 0, foodcostPP: 0, foodcostTotaal: 0, vasteKosten: 0, nettoWinst: 0, margePct: 0 };
+    }
+}
+
+export function margeColor(pct) { return pct > 70 ? 'green' : pct >= 60 ? 'orange' : 'red'; }
+export function margeLabel(pct) { return pct > 70 ? 'Strong' : pct >= 60 ? 'Watchful' : 'Low Margin'; }
+export function margeEmoji(pct) { return pct > 70 ? '🟢' : pct >= 60 ? '🟡' : '🔴'; }

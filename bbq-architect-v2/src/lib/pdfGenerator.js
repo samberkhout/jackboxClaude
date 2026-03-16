@@ -32,7 +32,6 @@ function loadLogoAsBase64() {
             canvas.height = img.naturalHeight;
             var ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0);
-            console.log('[PDF] Logo geladen:', img.naturalWidth + 'x' + img.naturalHeight);
             resolve({ data: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height });
         };
         img.onerror = function () { console.warn('[PDF] Logo niet gevonden'); resolve(null); };
