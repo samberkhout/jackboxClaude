@@ -374,13 +374,12 @@ export default function FotoArchief() {
         function onKey(e) {
             if (!lightbox) return;
             if (e.key === 'Escape') setLightbox(null);
-            if (e.key === 'ArrowRight') {
-                var idx = fotos.findIndex(function(f) { return f.id === lightbox.foto.id; });
-                if (idx < fotos.length - 1) setLightbox({ foto: fotos[idx + 1], showEdited: lightbox.showEdited });
-            }
-            if (e.key === 'ArrowLeft') {
-                var idx2 = fotos.findIndex(function(f) { return f.id === lightbox.foto.id; });
-                if (idx2 > 0) setLightbox({ foto: fotos[idx2 - 1], showEdited: lightbox.showEdited });
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                var curIdx = fotos.findIndex(function(f) { return f.id === lightbox.foto.id; });
+                var nextIdx = e.key === 'ArrowRight' ? curIdx + 1 : curIdx - 1;
+                if (nextIdx >= 0 && nextIdx < fotos.length) {
+                    setLightbox({ foto: fotos[nextIdx], showEdited: lightbox.showEdited });
+                }
             }
         }
         window.addEventListener('keydown', onKey);

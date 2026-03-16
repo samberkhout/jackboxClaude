@@ -73,8 +73,9 @@ export async function POST(request) {
 
         if (storageError) throw new Error('Supabase Storage: ' + storageError.message);
 
-        var { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(bestandsnaam);
-        var originalUrl = publicUrl;
+        var { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(bestandsnaam);
+        var originalUrl = urlData?.publicUrl;
+        if (!originalUrl) throw new Error('Kon geen publieke URL ophalen voor het geüploade bestand');
 
         // 2. Lokale bewerking met Sharp (optioneel)
         var editedUrl = originalUrl;
@@ -86,8 +87,8 @@ export async function POST(request) {
                     .from(BUCKET)
                     .upload(editedNaam, editedBuffer, { contentType: 'image/jpeg', upsert: false });
                 if (!editError) {
-                    var { data: { publicUrl: editedPublicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(editedNaam);
-                    editedUrl = editedPublicUrl;
+                    var { data: editedUrlData } = supabase.storage.from(BUCKET).getPublicUrl(editedNaam);
+                    if (editedUrlData?.publicUrl) editedUrl = editedUrlData.publicUrl;
                 }
             } catch(e) {
                 console.warn('[photo-upload] Sharp bewerking mislukt (niet fataal):', e.message);

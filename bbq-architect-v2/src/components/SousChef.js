@@ -177,18 +177,22 @@ export default function SousChef() {
         setLoading(true);
         setShowActions(false);
 
-        // Bouw API messages (alleen role+content voor Anthropic)
+        // Bouw API messages — alleen daadwerkelijke gesprekstekst meesturen
         var apiMessages = messages
             .concat([userMsg])
             .filter(function (m) { return m.type === 'text' || m.type === 'streaming'; })
             .map(function (m) { return { role: m.role, content: m.content }; });
+
+        // Maak AbortController aan zodat we het verzoek kunnen annuleren
+        var controller = new AbortController();
+        abortRef.current = controller;
 
         try {
             var res = await fetch('/api/sous-chef', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messages: apiMessages }),
-                signal: abortRef.current,
+                signal: controller.signal,
             });
 
             if (!res.ok) {
@@ -265,7 +269,7 @@ export default function SousChef() {
                                 return prev.slice(0, -1).concat([{ role: 'assistant', type: 'error', content: 'Fout: ' + event.message }]);
                             });
                         }
-                    } catch (e) { /* ignore parse errors */ }
+                    } catch (e) { console.warn('[SousChef] SSE parse fout:', e.message, line); }
                 }
             }
         } catch (err) {

@@ -290,12 +290,13 @@ async function executeTool(name, input) {
 
         case 'get_event': {
             var todayStr = new Date().toISOString().split('T')[0];
-            var eq = supabase.from('events').select('*').neq('status', 'completed');
-            if (input.event_id) eq = eq.eq('id', input.event_id);
-            else if (input.event_naam) eq = eq.ilike('name', '%' + input.event_naam + '%');
-            else if (input.eerstvolgende) eq = eq.gte('date', todayStr).order('date').limit(1);
-            else eq = eq.gte('date', todayStr).order('date').limit(5);
-            var { data: events } = await eq.limit(5);
+            var evQ = supabase.from('events').select('*').neq('status', 'completed');
+            if (input.event_id)       evQ = evQ.eq('id', input.event_id);
+            else if (input.event_naam) evQ = evQ.ilike('name', '%' + input.event_naam + '%');
+            else if (input.eerstvolgende) evQ = evQ.gte('date', todayStr).order('date').limit(1);
+            else evQ = evQ.gte('date', todayStr).order('date').limit(5);
+            // Geen extra .limit() hier — bovenstaande branches stellen al een limit in
+            var { data: events } = await evQ;
             if (!events || events.length === 0) return { resultaat: 'Geen aankomende events gevonden' };
             return { events: events };
         }
@@ -504,10 +505,10 @@ async function executeTool(name, input) {
         }
 
         case 'view_photos': {
-            var limit = Math.min(input.limit || 10, 50);
-            var q = supabase.from('photo_logbook').select('id, original_url, edited_url, category, ai_tags, ai_description, uploaded_at').order('uploaded_at', { ascending: false }).limit(limit);
-            if (input.categorie) q = q.eq('category', input.categorie);
-            var { data: fotos } = await q;
+            var fotoLimit = Math.min(input.limit || 10, 50);
+            var fotoQ = supabase.from('photo_logbook').select('id, original_url, edited_url, category, ai_tags, ai_description, uploaded_at').order('uploaded_at', { ascending: false }).limit(fotoLimit);
+            if (input.categorie) fotoQ = fotoQ.eq('category', input.categorie);
+            var { data: fotos } = await fotoQ;
             return {
                 fotos: (fotos || []).map(function(f) {
                     return { id: f.id, url: f.edited_url || f.original_url, categorie: f.category, tags: f.ai_tags, beschrijving: f.ai_description, datum: f.uploaded_at };
@@ -517,20 +518,18 @@ async function executeTool(name, input) {
         }
 
         case 'propose_recipe_change': {
-            var isUpdate = !!input.id;
-            var label = (isUpdate ? 'Recept bijwerken: ' : 'Nieuw recept aanmaken: ') + (input.naam || '?');
-            return proposal('upsert_recipe', label, input);
+            var receptLabel = (input.id ? 'Recept bijwerken: ' : 'Nieuw recept aanmaken: ') + (input.naam || '?');
+            return proposal('upsert_recipe', receptLabel, input);
         }
 
         case 'propose_event_change': {
-            var isUpdate = !!input.id;
-            var label = (isUpdate ? 'Event bijwerken: ' : 'Nieuw event aanmaken: ') + (input.name || '?') + (input.date ? ' (' + input.date + ')' : '');
-            return proposal('upsert_event', label, input);
+            var eventLabel = (input.id ? 'Event bijwerken: ' : 'Nieuw event aanmaken: ') + (input.name || '?') + (input.date ? ' (' + input.date + ')' : '');
+            return proposal('upsert_event', eventLabel, input);
         }
 
         case 'propose_price_update': {
-            var label = 'Prijs bijwerken: ' + input.product_naam + ' bij ' + input.leverancier + ' → €' + Number(input.nieuwe_prijs).toFixed(2);
-            return proposal('update_price', label, input);
+            var prijsLabel = 'Prijs bijwerken: ' + input.product_naam + ' bij ' + input.leverancier + ' → €' + Number(input.nieuwe_prijs).toFixed(2);
+            return proposal('update_price', prijsLabel, input);
         }
 
         case 'generate_quote': {

@@ -69,30 +69,36 @@ export async function POST(request) {
             }
 
             case 'update_price': {
-                // Haal huidige prijs op om previous_price te bewaren
-                var { data: bestaand } = await supabase
+                // Zoek het exacte record op ID zodat we nooit meerdere rijen raken
+                var { data: match, error: findErr } = await supabase
                     .from('supplier_prices')
-                    .select('price_per_unit')
+                    .select('id, product_name, price_per_unit')
                     .ilike('product_name', '%' + payload.product_naam + '%')
                     .eq('supplier_name', payload.leverancier)
                     .limit(1)
-                    .single();
+                    .maybeSingle(); // geen crash als niet gevonden
 
-                var update = {
-                    price_per_unit:  payload.nieuwe_prijs,
-                    previous_price:  bestaand ? bestaand.price_per_unit : null,
-                    updated_at:      new Date().toISOString(),
+                if (findErr) throw new Error('Product opzoeken: ' + findErr.message);
+                if (!match) throw new Error('Product "' + payload.product_naam + '" niet gevonden bij ' + payload.leverancier);
+
+                var prijsUpdate = {
+                    price_per_unit: payload.nieuwe_prijs,
+                    previous_price: match.price_per_unit,
+                    updated_at:     new Date().toISOString(),
                 };
-                if (payload.eenheid) update.unit_type = payload.eenheid;
+                if (payload.eenheid) prijsUpdate.unit_type = payload.eenheid;
 
-                var { error } = await supabase
+                // Update altijd op exact ID — nooit meer dan 1 rij
+                var { error: updateErr } = await supabase
                     .from('supplier_prices')
-                    .update(update)
-                    .ilike('product_name', '%' + payload.product_naam + '%')
-                    .eq('supplier_name', payload.leverancier);
+                    .update(prijsUpdate)
+                    .eq('id', match.id);
 
-                if (error) throw new Error('Prijs bijwerken: ' + error.message);
-                return Response.json({ success: true, message: payload.leverancier + ' — "' + payload.product_naam + '" bijgewerkt naar €' + Number(payload.nieuwe_prijs).toFixed(2) });
+                if (updateErr) throw new Error('Prijs bijwerken: ' + updateErr.message);
+                return Response.json({
+                    success: true,
+                    message: payload.leverancier + ' — "' + match.product_name + '" bijgewerkt naar €' + Number(payload.nieuwe_prijs).toFixed(2),
+                });
             }
 
             case 'save_quote': {
